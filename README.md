@@ -1,6 +1,6 @@
 # epub-fix
 
-Fix an ebook that came out wrong: replace or repair the cover, correct the title and author, rename chapters, fix misspelled text, and download a clean EPUB that opens well in any reader.
+Fix an EPUB in your browser: replace the cover, correct title, author and series, rename chapters, find and replace text, and download a clean EPUB 3 that works in any reader. It opens EPUB 2 and EPUB 3 books.
 
 **Use it here: [aendom.github.io/epub-fix](https://aendom.github.io/epub-fix/)**
 
@@ -22,9 +22,13 @@ Everything runs in your browser. The book is never uploaded, and there is no ser
 - **Text.** Find and replace across the whole book, with match case, whole words and regex options. It only touches the text, never the code around it.
 - **Structure.** Fixes the packaging (`mimetype` first and uncompressed), declares files that are inside the book but not listed, drops entries for files that are missing, normalizes language codes (`eng` → `en`), and keeps the table of contents identifier in sync with the book.
 
-## Output format
+## EPUB 2 and EPUB 3
 
-- **EPUB 3 + EPUB 2 (recommended):** a valid EPUB 3 that also keeps the EPUB 2 table of contents (`toc.ncx`) and cover declaration, so old and new readers both navigate it. EPUB 2 books are upgraded.
+There are two generations of the format. **EPUB 2** (2007–2010) is based on XHTML 1.1 and keeps its table of contents in `toc.ncx`; many older and downloaded books still use it. **EPUB 3** (2011, current revision 3.3 from 2023) is based on HTML5 and keeps its table of contents in `nav.xhtml`. Readers support one, the other, or both, which is why a book can look fine in one app and lose its cover or chapters in another.
+
+epub-fix opens both and lets you choose the output:
+
+- **EPUB 3 + EPUB 2 (recommended):** a valid EPUB 3 that also keeps the EPUB 2 table of contents and cover declaration, so readers of either generation show and navigate it, from desktop apps like Thorium to KOReader or small e-ink devices. EPUB 2 books are upgraded.
 - **Keep the original version:** an EPUB 2 book stays EPUB 2, with its problems fixed.
 
 Files produced by epub-fix pass [EPUBCheck](https://www.w3.org/publishing/epubcheck/), the official validator, when the chapters themselves are valid.
