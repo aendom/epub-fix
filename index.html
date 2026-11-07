@@ -1,0 +1,1346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>[hidden]{display:none!important}</style>
+<title>epub-fix</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Fix an EPUB in your browser: replace or repair the cover, edit title, author and series, rename chapters, find and replace text, and download a clean copy that works in Thorium, KOReader, CrossPoint and other readers.">
+<style>
+/* Fonts ship with the page (fonts/, SIL Open Font License), so nothing loads from a third party. */
+@font-face { font-family: "IBM Plex Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url("fonts/plex-sans-400.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 500; font-style: normal; font-display: swap; src: url("fonts/plex-sans-500.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 700; font-style: normal; font-display: swap; src: url("fonts/plex-sans-700.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans Condensed"; font-weight: 400; font-style: normal; font-display: swap; src: url("fonts/plex-cond-400.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans Condensed"; font-weight: 500; font-style: normal; font-display: swap; src: url("fonts/plex-cond-500.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans Condensed"; font-weight: 700; font-style: normal; font-display: swap; src: url("fonts/plex-cond-700.woff2") format("woff2"); }
+/* Same visual language as CrossPoint Calendar and Pages for CrossPoint: ink on grey paper,
+   selection shown as an inverted cell, a life-size reader beside the controls. */
+:root {
+  --paper: #e4e6e1;
+  --panel: #f1f2ee;
+  --ink: #141516;
+  --muted: #5d625b;
+  --rule: #c3c7bf;
+  --bezel: #2c2e2d;
+  --on-ink: #f1f2ee;
+  --warn: #8a4b0f;
+  --bad: #a3271d;
+  --ok: #2f6b3a;
+  --focus: #3a6fd8;
+  color-scheme: light;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: ui-monospace, "Cascadia Mono", "SF Mono", "SFMono-Regular", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink);
+  font: 15px/1.5 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+  margin: 0;
+}
+.wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 28px; }
+
+header { display: grid; gap: 14px; border-bottom: 3px solid var(--ink); padding-bottom: 14px; }
+.head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+h1 { font: 700 clamp(30px, 5vw, 44px)/1 var(--f-display); letter-spacing: -0.01em; margin: 0; }
+.spec { font: 500 12px/1.4 var(--f-mono); color: var(--muted); margin: 6px 0 0; }
+.lead { margin: 0; max-width: 64ch; font-size: 16px; text-wrap: pretty; }
+.lang-ui { display: flex; gap: 0; }
+
+main { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 40px; align-items: start; }
+@media (max-width: 860px) {
+  main { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .device-col { order: -1; position: static !important; }
+}
+
+/* ---- controls ---- */
+.controls { display: grid; gap: 26px; min-width: 0; }
+.field { display: grid; gap: 8px; min-width: 0; }
+.label { font: 700 11px/1 var(--f-display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.section { display: grid; gap: 14px; padding-top: 22px; border-top: 1px solid var(--rule); min-width: 0; }
+.section > h2 { font: 700 22px/1.1 var(--f-display); margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.section > h2 small { font: 500 12px/1.4 var(--f-mono); color: var(--muted); }
+.locked .section { display: none; }
+.intro { background: var(--panel); border: 1px solid var(--rule); padding: 18px 20px; display: grid; gap: 10px; max-width: 520px; }
+.intro h2 { font: 700 18px/1.2 var(--f-display); margin: 0; }
+.intro ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.intro p { font-size: 13px; color: var(--muted); margin: 0; }
+.controls:not(.locked) .intro { display: none; }
+
+.seg { display: inline-flex; flex-wrap: wrap; border: 1.5px solid var(--ink); width: fit-content; max-width: 100%; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { padding: 8px 16px; font: 500 14px/1.2 var(--f-body); cursor: pointer; user-select: none; border-right: 1.5px solid var(--ink); }
+.seg label:last-of-type { border-right: 0; }
+.seg input:checked + label { background: var(--ink); color: var(--on-ink); }
+.seg input:focus-visible + label { outline: 2px solid var(--focus); outline-offset: 2px; }
+.seg label:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.seg input:checked + label:hover { background: var(--ink); }
+
+select, .txt, textarea { font: 500 14px/1.3 var(--f-body); color: var(--ink); background: var(--panel); border: 1.5px solid var(--ink);
+  padding: 8px 12px; border-radius: 0; max-width: 100%; width: 100%; }
+textarea { min-height: 96px; resize: vertical; font-weight: 400; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 520px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.hint { font-size: 13px; color: var(--muted); margin: 0; max-width: 62ch; }
+
+.drop { display: grid; gap: 4px; place-items: center; text-align: center; padding: 22px 16px; max-width: 440px;
+  border: 1.5px dashed var(--ink); background: var(--panel); cursor: pointer; }
+.drop:hover, .drop.over { background: color-mix(in srgb, var(--ink) 8%, var(--panel)); }
+.drop:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.drop input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.drop b { font: 700 16px/1.2 var(--f-display); }
+.drop span { font-size: 13px; color: var(--muted); }
+.drop.small { padding: 14px 16px; }
+.fileinfo { font: 400 13px/1.4 var(--f-mono); margin: 0; overflow-wrap: anywhere; max-width: 440px; }
+
+/* health check */
+.checks { list-style: none; margin: 0; padding: 0; display: grid; border: 1.5px solid var(--ink); background: var(--panel); }
+.checks li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 10px 14px; border-top: 1px solid var(--rule); }
+.checks li:first-child { border-top: 0; }
+.checks .ico { font: 700 15px/1.35 var(--f-display); text-align: center; }
+.checks .ok .ico { color: var(--ok); }
+.checks .fix .ico { color: var(--warn); }
+.checks .bad .ico { color: var(--bad); }
+.checks b { font: 700 14px/1.35 var(--f-body); display: block; }
+.checks span { font-size: 13px; color: var(--muted); display: block; }
+
+/* cover */
+.cover-row { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.cover-row .drop { flex: 1 1 240px; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* buttons */
+.btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; max-width: 440px;
+  padding: 14px 16px; font: 700 16px/1.2 var(--f-display); letter-spacing: 0.02em; cursor: pointer;
+  border: 1.5px solid var(--ink); background: var(--ink); color: var(--on-ink); text-align: left; }
+.btn small { font: 400 12px/1.2 var(--f-mono); opacity: 0.8; letter-spacing: 0; text-align: right; overflow-wrap: anywhere; }
+.btn:hover { filter: brightness(1.15); }
+.btn:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+.mini { padding: 7px 14px; font: 500 14px/1.2 var(--f-body); border: 1.5px solid var(--ink); background: transparent; color: var(--ink); cursor: pointer; }
+.mini:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.mini.ink { background: var(--ink); color: var(--on-ink); }
+.mini.ink:hover { filter: brightness(1.15); background: var(--ink); }
+.mini:disabled { opacity: .45; cursor: not-allowed; }
+
+/* table of contents */
+.toc { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 420px; overflow: auto; padding-right: 4px; }
+.toc li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.toc .txt { padding: 6px 10px; font-weight: 400; }
+.toc .where { font: 400 11px/1.2 var(--f-mono); color: var(--muted); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty { font-size: 14px; color: var(--muted); margin: 0; padding: 14px; border: 1.5px dashed var(--rule); }
+
+/* find & replace */
+.fr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+@media (max-width: 520px) { .fr { grid-template-columns: minmax(0, 1fr); } }
+.opts { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; }
+.opts label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.opts input { accent-color: var(--ink); width: 16px; height: 16px; }
+.hits { list-style: none; margin: 0; padding: 0; display: grid; max-height: 280px; overflow: auto; border: 1px solid var(--rule); background: var(--panel); }
+.hits li { padding: 8px 12px; border-top: 1px solid var(--rule); font-size: 13px; }
+.hits li:first-child { border-top: 0; }
+.hits mark { background: var(--ink); color: var(--on-ink); padding: 0 2px; }
+.hits .f { font: 400 11px/1.4 var(--f-mono); color: var(--muted); display: block; }
+.count { font: 500 13px/1.4 var(--f-mono); margin: 0; }
+
+.download { display: grid; gap: 12px; }
+.changes { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); display: grid; gap: 2px; }
+.status { font: 400 13px/1.4 var(--f-mono); color: var(--muted); min-height: 1.4em; margin: 0; max-width: 440px; }
+
+/* ---- device ---- */
+.device-col { display: grid; justify-items: center; gap: 12px; position: sticky; top: 20px; }
+.device { background: var(--bezel); padding: 22px 18px 46px; border-radius: 22px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 18px 40px -20px rgba(0,0,0,.45); position: relative; }
+.device::after { content: ""; position: absolute; left: 50%; bottom: 17px; width: 46px; height: 6px; margin-left: -23px;
+  border-radius: 3px; background: rgba(255,255,255,.14); }
+.screen { display: grid; place-items: center; width: min(300px, 64vw); aspect-ratio: 480 / 800; background: #fff; overflow: hidden; position: relative; }
+.screen img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.screen .none { font: 700 18px/1.25 var(--f-display); color: #9a9e97; text-align: center; padding: 24px; }
+.bookmeta { text-align: center; max-width: 320px; display: grid; gap: 2px; }
+.bookmeta b { font: 700 17px/1.2 var(--f-display); overflow-wrap: anywhere; }
+.bookmeta span { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.caption { font: 400 12px/1.4 var(--f-mono); color: var(--muted); text-align: center; max-width: 320px; overflow-wrap: anywhere; margin: 0; }
+
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 16px; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+footer a, .hint a { color: var(--ink); }
+@media (prefers-reduced-motion: no-preference) { .btn, .seg label, .mini { transition: background-color .12s, filter .12s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="head-row">
+      <div>
+        <h1>epub-fix</h1>
+        <p class="spec" data-t="spec">EPUB 2 &amp; 3 · Thorium · KOReader · CrossPoint</p>
+      </div>
+      <div class="seg lang-ui" role="radiogroup" aria-label="Idioma / Language">
+        <input type="radio" name="ui" id="ui-es" value="es"><label for="ui-es">ES</label>
+        <input type="radio" name="ui" id="ui-en" value="en"><label for="ui-en">EN</label>
+      </div>
+    </div>
+    <p class="lead" data-t="lead"></p>
+  </header>
+
+  <main>
+    <section class="controls locked" id="controls" aria-label="Editor">
+
+      <div class="field">
+        <span class="label" data-t="file"></span>
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept=".epub,application/epub+zip">
+          <b data-t="dropTitle"></b>
+          <span data-t="dropSub"></span>
+        </label>
+        <p class="fileinfo" id="fileinfo" hidden></p>
+      </div>
+
+      <div class="intro">
+        <h2 data-t="introTitle"></h2>
+        <ul>
+          <li data-t="intro1"></li><li data-t="intro2"></li><li data-t="intro3"></li><li data-t="intro4"></li><li data-t="intro5"></li>
+        </ul>
+        <p data-t="introNote"></p>
+      </div>
+
+      <div class="section" id="sec-check">
+        <h2><span data-t="checkTitle"></span><small id="checksum"></small></h2>
+        <ul class="checks" id="checks"></ul>
+      </div>
+
+      <div class="section" id="sec-cover">
+        <h2 data-t="coverTitle"></h2>
+        <div class="cover-row">
+          <label class="drop small" id="coverdrop">
+            <input type="file" id="coverfile" accept="image/jpeg,image/png,image/webp,image/gif">
+            <b data-t="coverDrop"></b>
+            <span data-t="coverSub"></span>
+          </label>
+        </div>
+        <div class="field">
+          <span class="label" data-t="optimize"></span>
+          <div class="seg" role="radiogroup">
+            <input type="radio" name="opt" id="opt-on" value="on"><label for="opt-on" data-t="optOn"></label>
+            <input type="radio" name="opt" id="opt-off" value="off"><label for="opt-off" data-t="optOff"></label>
+          </div>
+          <p class="hint" data-t="optHint"></p>
+        </div>
+        <div class="btn-row"><button class="mini" type="button" id="coverundo" hidden data-t="coverUndo"></button></div>
+      </div>
+
+      <div class="section" id="sec-meta">
+        <h2 data-t="metaTitle"></h2>
+        <div class="field"><label class="label" for="m-title" data-t="mTitle"></label><input class="txt" id="m-title" autocomplete="off"></div>
+        <div class="grid2">
+          <div class="field"><label class="label" for="m-author" data-t="mAuthor"></label><input class="txt" id="m-author" autocomplete="off"></div>
+          <div class="field"><label class="label" for="m-sort" data-t="mSort"></label><input class="txt" id="m-sort" autocomplete="off"></div>
+        </div>
+        <p class="hint" data-t="authorHint"></p>
+        <div class="grid2">
+          <div class="field"><label class="label" for="m-series" data-t="mSeries"></label><input class="txt" id="m-series" autocomplete="off"></div>
+          <div class="field"><label class="label" for="m-index" data-t="mIndex"></label><input class="txt" id="m-index" inputmode="decimal" autocomplete="off"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label class="label" for="m-publisher" data-t="mPublisher"></label><input class="txt" id="m-publisher" autocomplete="off"></div>
+          <div class="field"><label class="label" for="m-date" data-t="mDate"></label><input class="txt" id="m-date" placeholder="1999" autocomplete="off"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label class="label" for="m-lang" data-t="mLang"></label>
+            <select id="m-lang"></select></div>
+          <div class="field"><label class="label" for="m-isbn" data-t="mIsbn"></label><input class="txt" id="m-isbn" autocomplete="off"></div>
+        </div>
+        <div class="field"><label class="label" for="m-subjects" data-t="mSubjects"></label><input class="txt" id="m-subjects" autocomplete="off"></div>
+        <div class="field"><label class="label" for="m-desc" data-t="mDesc"></label><textarea id="m-desc"></textarea></div>
+      </div>
+
+      <div class="section" id="sec-toc">
+        <h2><span data-t="tocTitle"></span><small id="tocsum"></small></h2>
+        <ol class="toc" id="toc"></ol>
+        <p class="empty" id="tocempty" data-t="tocEmpty" hidden></p>
+        <div class="btn-row"><button class="mini" type="button" id="tocgen" data-t="tocGen"></button></div>
+        <p class="hint" data-t="tocHint"></p>
+      </div>
+
+      <div class="section" id="sec-find">
+        <h2 data-t="findTitle"></h2>
+        <div class="fr">
+          <div class="field"><label class="label" for="f-find" data-t="fFind"></label><input class="txt" id="f-find" autocomplete="off" spellcheck="false"></div>
+          <div class="field"><label class="label" for="f-repl" data-t="fRepl"></label><input class="txt" id="f-repl" autocomplete="off" spellcheck="false"></div>
+        </div>
+        <div class="opts">
+          <label><input type="checkbox" id="f-case"><span data-t="fCase"></span></label>
+          <label><input type="checkbox" id="f-word"><span data-t="fWord"></span></label>
+          <label><input type="checkbox" id="f-re"><span data-t="fRe"></span></label>
+        </div>
+        <div class="btn-row">
+          <button class="mini" type="button" id="f-go" data-t="fGo"></button>
+          <button class="mini ink" type="button" id="f-all" data-t="fAll" disabled></button>
+        </div>
+        <p class="count" id="f-count" hidden></p>
+        <ul class="hits" id="f-hits" hidden></ul>
+        <p class="hint" data-t="findHint"></p>
+      </div>
+
+      <div class="section download" id="sec-out">
+        <h2 data-t="outTitle"></h2>
+        <div class="field">
+          <span class="label" data-t="fmt"></span>
+          <div class="seg" role="radiogroup">
+            <input type="radio" name="fmt" id="fmt-hybrid" value="hybrid"><label for="fmt-hybrid" data-t="fmtHybrid"></label>
+            <input type="radio" name="fmt" id="fmt-keep" value="keep"><label for="fmt-keep" data-t="fmtKeep"></label>
+          </div>
+          <p class="hint" id="fmthint"></p>
+        </div>
+        <ul class="changes" id="changes"></ul>
+        <button class="btn" id="go" type="button" disabled><span data-t="go"></span><small id="outname"></small></button>
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <div class="device-col">
+      <div class="device"><div class="screen" id="screen"><div class="none" id="nocover"></div><img id="coverimg" alt="" hidden></div></div>
+      <div class="bookmeta"><b id="bm-title"></b><span id="bm-author"></span></div>
+      <p class="caption" id="caption"></p>
+    </div>
+  </main>
+
+  <footer>
+    <span data-t="foot"></span>
+    <a href="https://github.com/aendom/epub-fix" target="_blank" rel="noopener">github.com/aendom/epub-fix</a>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+"use strict";
+// ---------------------------------------------------------------- text
+const UI = {
+  en: {
+    spec: "EPUB 2 &amp; 3 · Thorium · KOReader · CrossPoint",
+    lead: "Fix an ebook that came out wrong: replace or repair the cover, correct the title and author, rename chapters, fix misspelled text, and download a clean copy that opens well in any reader. Everything happens in your browser; the book is never uploaded.",
+    file: "Book", dropTitle: "Drop an EPUB here", dropSub: "or click to choose a file. It stays on your computer.",
+    checkTitle: "Check", coverTitle: "Cover", metaTitle: "Details", tocTitle: "Chapters", findTitle: "Find and replace", outTitle: "Download",
+    coverDrop: "Drop a new cover image", coverSub: "JPG, PNG or WebP. Portrait works best.",
+    optimize: "Cover image", optOn: "Optimize", optOff: "Use as is",
+    optHint: "Optimize saves it as a JPG no taller than 1600 px: sharp on any reader and light on small devices.",
+    coverUndo: "Undo new cover",
+    mTitle: "Title", mAuthor: "Author", mSort: "Sort as", mSeries: "Series", mIndex: "Number",
+    mPublisher: "Publisher", mDate: "Year or date", mLang: "Language", mIsbn: "ISBN / identifier",
+    mSubjects: "Tags, separated by commas", mDesc: "Description",
+    authorHint: "Separate several authors with &amp;. Sort as is how libraries order the book, for example <i>Cortázar, Julio</i>.",
+    tocEmpty: "This book has no table of contents.",
+    tocGen: "Build from chapter headings",
+    tocHint: "Rename entries here; the change goes into both kinds of table of contents, so every reader shows it. Building from headings replaces the list with one entry per chapter file.",
+    fFind: "Find", fRepl: "Replace with", fCase: "Match case", fWord: "Whole words", fRe: "Pattern (regex)",
+    fGo: "Find", fAll: "Replace all",
+    findHint: "Searches the text of every chapter, never the code around it. A phrase broken by formatting (half in italics, for example) won't be found.",
+    fmt: "Format", fmtHybrid: "EPUB 3 + EPUB 2 (recommended)", fmtKeep: "Keep the original version",
+    go: "Download fixed EPUB",
+    foot: "Made by AENDOM. Works with any EPUB reader.",
+    noBook: "No book yet", noCover: "This book has no cover",
+    // checks
+    ckCoverOk: "Cover", ckCoverOkD: "Found and declared so every reader can show it.",
+    ckCoverFix: "Cover not declared for every reader", ckCoverFixD: "Some readers won't show it. Fixed on download.",
+    ckCoverBad: "No cover", ckCoverBadD: "Drop an image in Cover to add one.",
+    ckCoverNew: "New cover", ckCoverNewD: "Will be added and declared for every reader.",
+    ckTocOk: (n) => `Table of contents · ${n} entries`, ckTocOkD: "Present in both formats.",
+    ckTocFix: (n) => `Table of contents · ${n} entries`, ckTocFixD: (v) => `Only the ${v} version exists. The other is created on download.`,
+    ckTocBad: "No table of contents", ckTocBadD: "Use Build from chapter headings in Chapters.",
+    ckTocFew: (n) => `Table of contents · only ${n} ${n === 1 ? "entry" : "entries"}`, ckTocFewD: "Probably incomplete. Check Chapters.",
+    ckLangOk: (l) => `Language · ${l}`, ckLangOkD: "Readers use it to pick hyphenation and dictionary.",
+    ckLangBad: "No language", ckLangBadD: "Choose one in Details. Without it, hyphenation and dictionaries may fail.",
+    ckLangFix: (l) => `Language code “${l}” is not standard`, ckLangFixD: (l) => `Will be saved as “${l}”.`,
+    ckMetaOk: "Title and author", ckMetaOkD: "Both present.",
+    ckMetaBad: "Title or author missing", ckMetaBadD: "Fill them in Details so the book shows correctly in your library.",
+    ckFilesOk: (n) => `Files · ${n}`, ckFilesOkD: "Everything listed is in the book.",
+    ckMissing: (n) => `${n} missing ${n === 1 ? "file" : "files"}`, ckMissingD: (l) => `Listed but not inside the EPUB: ${l}. Removed from the list on download.`,
+    ckExtra: (n) => `${n} unlisted ${n === 1 ? "file" : "files"}`, ckExtraD: (l) => `Inside the EPUB but not declared: ${l}. Declared on download.`,
+    ckPackOk: "Packaging", ckPackOkD: "Correct.",
+    ckPackFix: "Packaging is not standard", ckPackFixD: "Strict readers may refuse the file. Fixed on download.",
+    ckBroken: (n) => `${n} ${n === 1 ? "chapter has" : "chapters have"} broken code`, ckBrokenD: "Text search skips them. Lenient readers still open them.",
+    ckSum: (a, b) => b ? `${b} to fix` : "all good",
+    // changes
+    chHead: "On download:",
+    chCover: "New cover", chCoverDecl: "Cover declared for every reader", chMeta: "Details updated", chToc: "Chapters updated",
+    chTocNew: "Table of contents created", chText: (n) => `${n} text ${n === 1 ? "replacement" : "replacements"}`,
+    chHybrid: "Converted to EPUB 3 with EPUB 2 fallbacks", chNav: "EPUB 3 table of contents added", chNcx: "EPUB 2 table of contents added",
+    chPack: "Packaging fixed", chFiles: "File list corrected", chNone: "Clean repackage, no content changes",
+    fmtHint2: "This book is EPUB 2. The download keeps everything EPUB 2 readers need and adds what EPUB 3 readers expect.",
+    fmtHint3: "This book is already EPUB 3. The download keeps the EPUB 2 table of contents so older readers still navigate it.",
+    // status
+    reading: "Reading the book…", notEpub: "This file isn't an EPUB, or it is damaged.", noLib: "The ZIP library didn't load. Check your connection and reload.",
+    found: (n, f) => `${n} ${n === 1 ? "match" : "matches"} in ${f} ${f === 1 ? "chapter" : "chapters"}`, foundMore: (n) => ` · showing the first ${n}`,
+    none: "No matches.", badRe: "That pattern isn't valid.", replaced: (n) => `Replaced ${n}. It will be saved on download.`,
+    building: "Building the EPUB…", done: (n) => `Downloaded ${n}`, zipped: "zipped, unzip it to get the EPUB",
+    declined: "Download cancelled.", failed: "Something failed: ",
+    entries: (n) => `${n} ${n === 1 ? "entry" : "entries"}`,
+    fileinfo: (name, size, ver, n) => `${name} · ${size} · EPUB ${ver} · ${n} ${n === 1 ? "chapter file" : "chapter files"}`,
+    coverInfo: (w, h, kb) => `${w} × ${h} px · ${kb}`, coverOrig: "current cover", coverNew: "new cover",
+    other: "Other…",
+    introTitle: "What it fixes",
+    intro1: "A cover that's missing, broken or doesn't show in some readers.",
+    intro2: "Title, author, series, language and description, so the book sorts well in your library.",
+    intro3: "A table of contents that's missing or has wrong names.",
+    intro4: "Words that came out wrong, with find and replace across the whole book.",
+    intro5: "How the file is built: it downloads as a clean EPUB 3 that keeps everything EPUB 2 readers need.",
+    introNote: "Your original file is never changed. You get a new copy.",
+  },
+  es: {
+    spec: "EPUB 2 y 3 · Thorium · KOReader · CrossPoint",
+    lead: "Arregla un libro electrónico que vino mal: cambia o repara la portada, corrige el título y el autor, renombra capítulos, corrige texto mal escrito y descarga una copia limpia que abre bien en cualquier lector. Todo pasa en tu navegador; el libro nunca se sube.",
+    file: "Libro", dropTitle: "Suelta un EPUB aquí", dropSub: "o haz clic para elegir un archivo. Se queda en tu computadora.",
+    checkTitle: "Revisión", coverTitle: "Portada", metaTitle: "Datos", tocTitle: "Capítulos", findTitle: "Buscar y reemplazar", outTitle: "Descargar",
+    coverDrop: "Suelta una imagen de portada", coverSub: "JPG, PNG o WebP. Mejor en vertical.",
+    optimize: "Imagen de portada", optOn: "Optimizar", optOff: "Usar tal cual",
+    optHint: "Optimizar la guarda como JPG de máximo 1600 px de alto: nítida en cualquier lector y ligera en dispositivos pequeños.",
+    coverUndo: "Deshacer portada nueva",
+    mTitle: "Título", mAuthor: "Autor", mSort: "Ordenar como", mSeries: "Serie", mIndex: "Número",
+    mPublisher: "Editorial", mDate: "Año o fecha", mLang: "Idioma", mIsbn: "ISBN / identificador",
+    mSubjects: "Etiquetas, separadas por comas", mDesc: "Descripción",
+    authorHint: "Separa varios autores con &amp;. Ordenar como es cómo las bibliotecas acomodan el libro, por ejemplo <i>Cortázar, Julio</i>.",
+    tocEmpty: "Este libro no tiene índice.",
+    tocGen: "Crear desde los títulos de capítulo",
+    tocHint: "Renombra las entradas aquí; el cambio se guarda en los dos tipos de índice, así lo ve cualquier lector. Crear desde los títulos reemplaza la lista con una entrada por archivo de capítulo.",
+    fFind: "Buscar", fRepl: "Reemplazar por", fCase: "Mayúsculas exactas", fWord: "Palabras completas", fRe: "Patrón (regex)",
+    fGo: "Buscar", fAll: "Reemplazar todo",
+    findHint: "Busca en el texto de cada capítulo, nunca en el código. Una frase cortada por formato (mitad en cursiva, por ejemplo) no se encuentra.",
+    fmt: "Formato", fmtHybrid: "EPUB 3 + EPUB 2 (recomendado)", fmtKeep: "Mantener la versión original",
+    go: "Descargar EPUB arreglado",
+    foot: "Hecho por AENDOM. Funciona con cualquier lector de EPUB.",
+    noBook: "Aún no hay libro", noCover: "Este libro no tiene portada",
+    ckCoverOk: "Portada", ckCoverOkD: "Encontrada y declarada para que cualquier lector la muestre.",
+    ckCoverFix: "Portada no declarada para todos los lectores", ckCoverFixD: "Algunos lectores no la mostrarán. Se arregla al descargar.",
+    ckCoverBad: "Sin portada", ckCoverBadD: "Suelta una imagen en Portada para agregarla.",
+    ckCoverNew: "Portada nueva", ckCoverNewD: "Se agrega y se declara para todos los lectores.",
+    ckTocOk: (n) => `Índice · ${n} entradas`, ckTocOkD: "Presente en los dos formatos.",
+    ckTocFix: (n) => `Índice · ${n} entradas`, ckTocFixD: (v) => `Solo existe la versión ${v}. La otra se crea al descargar.`,
+    ckTocBad: "Sin índice", ckTocBadD: "Usa Crear desde los títulos de capítulo en Capítulos.",
+    ckTocFew: (n) => `Índice · solo ${n} ${n === 1 ? "entrada" : "entradas"}`, ckTocFewD: "Probablemente incompleto. Revisa Capítulos.",
+    ckLangOk: (l) => `Idioma · ${l}`, ckLangOkD: "Los lectores lo usan para la división de palabras y el diccionario.",
+    ckLangBad: "Sin idioma", ckLangBadD: "Elige uno en Datos. Sin él, la división de palabras y los diccionarios pueden fallar.",
+    ckLangFix: (l) => `El código de idioma “${l}” no es estándar`, ckLangFixD: (l) => `Se guarda como “${l}”.`,
+    ckMetaOk: "Título y autor", ckMetaOkD: "Ambos presentes.",
+    ckMetaBad: "Falta título o autor", ckMetaBadD: "Llénalos en Datos para que el libro aparezca bien en tu biblioteca.",
+    ckFilesOk: (n) => `Archivos · ${n}`, ckFilesOkD: "Todo lo listado está en el libro.",
+    ckMissing: (n) => `${n} ${n === 1 ? "archivo falta" : "archivos faltan"}`, ckMissingD: (l) => `Listados pero no están dentro del EPUB: ${l}. Se quitan de la lista al descargar.`,
+    ckExtra: (n) => `${n} ${n === 1 ? "archivo sin declarar" : "archivos sin declarar"}`, ckExtraD: (l) => `Están dentro del EPUB pero no declarados: ${l}. Se declaran al descargar.`,
+    ckPackOk: "Empaquetado", ckPackOkD: "Correcto.",
+    ckPackFix: "Empaquetado no estándar", ckPackFixD: "Los lectores estrictos pueden rechazarlo. Se arregla al descargar.",
+    ckBroken: (n) => `${n} ${n === 1 ? "capítulo tiene" : "capítulos tienen"} código roto`, ckBrokenD: "La búsqueda de texto los salta. Los lectores tolerantes sí los abren.",
+    ckSum: (a, b) => b ? `${b} por arreglar` : "todo bien",
+    chHead: "Al descargar:",
+    chCover: "Portada nueva", chCoverDecl: "Portada declarada para todos los lectores", chMeta: "Datos actualizados", chToc: "Capítulos actualizados",
+    chTocNew: "Índice creado", chText: (n) => `${n} ${n === 1 ? "reemplazo" : "reemplazos"} de texto`,
+    chHybrid: "Convertido a EPUB 3 con respaldo EPUB 2", chNav: "Índice EPUB 3 agregado", chNcx: "Índice EPUB 2 agregado",
+    chPack: "Empaquetado arreglado", chFiles: "Lista de archivos corregida", chNone: "Reempaquetado limpio, sin cambios de contenido",
+    fmtHint2: "Este libro es EPUB 2. La descarga conserva lo que necesitan los lectores EPUB 2 y agrega lo que esperan los EPUB 3.",
+    fmtHint3: "Este libro ya es EPUB 3. La descarga conserva el índice EPUB 2 para que los lectores antiguos sigan navegándolo.",
+    reading: "Leyendo el libro…", notEpub: "Este archivo no es un EPUB o está dañado.", noLib: "No cargó la librería ZIP. Revisa tu conexión y recarga.",
+    found: (n, f) => `${n} ${n === 1 ? "coincidencia" : "coincidencias"} en ${f} ${f === 1 ? "capítulo" : "capítulos"}`, foundMore: (n) => ` · mostrando las primeras ${n}`,
+    none: "Sin coincidencias.", badRe: "Ese patrón no es válido.", replaced: (n) => `${n} reemplazados. Se guardan al descargar.`,
+    building: "Armando el EPUB…", done: (n) => `Descargado ${n}`, zipped: "en ZIP, descomprímelo para obtener el EPUB",
+    declined: "Descarga cancelada.", failed: "Algo falló: ",
+    entries: (n) => `${n} ${n === 1 ? "entrada" : "entradas"}`,
+    fileinfo: (name, size, ver, n) => `${name} · ${size} · EPUB ${ver} · ${n} ${n === 1 ? "archivo de capítulo" : "archivos de capítulo"}`,
+    coverInfo: (w, h, kb) => `${w} × ${h} px · ${kb}`, coverOrig: "portada actual", coverNew: "portada nueva",
+    other: "Otro…",
+    introTitle: "Qué arregla",
+    intro1: "Una portada que falta, está rota o no aparece en algunos lectores.",
+    intro2: "Título, autor, serie, idioma y descripción, para que el libro se acomode bien en tu biblioteca.",
+    intro3: "Un índice que falta o tiene nombres equivocados.",
+    intro4: "Palabras que salieron mal, con buscar y reemplazar en todo el libro.",
+    intro5: "Cómo está armado el archivo: se descarga como un EPUB 3 limpio que conserva todo lo que necesitan los lectores EPUB 2.",
+    introNote: "Tu archivo original nunca se modifica. Recibes una copia nueva.",
+  },
+};
+
+const LANGS = [["en", "English"], ["es", "Español"], ["fr", "Français"], ["de", "Deutsch"], ["it", "Italiano"], ["pt", "Português"],
+  ["ca", "Català"], ["nl", "Nederlands"], ["ru", "Русский"], ["ja", "日本語"], ["zh", "中文"], ["ko", "한국어"], ["la", "Latina"]];
+const LANG3 = { eng: "en", spa: "es", fre: "fr", fra: "fr", ger: "de", deu: "de", ita: "it", por: "pt", cat: "ca", dut: "nl", nld: "nl",
+  rus: "ru", jpn: "ja", chi: "zh", zho: "zh", kor: "ko", lat: "la" };
+
+// ---------------------------------------------------------------- state
+const $ = (s) => document.querySelector(s);
+const NS = { opf: "http://www.idpf.org/2007/opf", dc: "http://purl.org/dc/elements/1.1/", xhtml: "http://www.w3.org/1999/xhtml",
+  ncx: "http://www.daisy.org/z3986/2005/ncx/", ops: "http://www.idpf.org/2007/ops", cont: "urn:oasis:names:tc:opendocument:xmlns:container" };
+const state = { ui: null, opt: "on", fmt: "hybrid" };
+try { const s = JSON.parse(localStorage.getItem("epub-fix") || "null"); if (s) Object.assign(state, s); } catch (e) {}
+if (!UI[state.ui]) state.ui = (navigator.language || "en").slice(0, 2) === "es" ? "es" : "en";
+function persist() { try { localStorage.setItem("epub-fix", JSON.stringify({ ui: state.ui, opt: state.opt, fmt: state.fmt })); } catch (e) {} }
+const t = (k) => UI[state.ui][k];
+
+let book = null;   // everything about the loaded EPUB
+
+// ---------------------------------------------------------------- paths
+function dirOf(p) { const i = p.lastIndexOf("/"); return i < 0 ? "" : p.slice(0, i + 1); }
+function resolve(base, href) {
+  href = href.split("#")[0];
+  try { href = decodeURIComponent(href); } catch (e) {}
+  const parts = (dirOf(base) + href).split("/"), out = [];
+  for (const s of parts) { if (s === "..") out.pop(); else if (s !== "." && s !== "") out.push(s); }
+  return out.join("/");
+}
+function relative(fromFile, toPath) {
+  const a = dirOf(fromFile).split("/").filter(Boolean), b = toPath.split("/");
+  let i = 0; while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++;
+  return "../".repeat(a.length - i) + b.slice(i).map(encodeURIComponent).join("/");
+}
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+function bytes(n) { return n < 1048576 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`; }
+const MEDIA = { xhtml: "application/xhtml+xml", html: "application/xhtml+xml", htm: "application/xhtml+xml", css: "text/css",
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", svg: "image/svg+xml", webp: "image/webp",
+  ttf: "font/ttf", otf: "font/otf", woff: "font/woff", woff2: "font/woff2", ncx: "application/x-dtbncx+xml",
+  js: "application/javascript", xml: "application/xml", smil: "application/smil+xml", mp3: "audio/mpeg", mp4: "video/mp4", txt: "text/plain" };
+function mediaOf(p) { return MEDIA[(p.split(".").pop() || "").toLowerCase()] || "application/octet-stream"; }
+const parseXML = (s) => new DOMParser().parseFromString(s, "application/xml");
+const broken = (d) => !d || d.getElementsByTagName("parsererror").length > 0;
+function serialize(doc) {
+  let s = new XMLSerializer().serializeToString(doc);
+  if (!/^<\?xml/.test(s)) s = '<?xml version="1.0" encoding="utf-8"?>\n' + s;
+  return s;
+}
+const textOf = (el) => (el ? el.textContent : "").replace(/\s+/g, " ").trim();
+const byLocal = (root, name) => Array.from(root.getElementsByTagName("*")).filter(e => e.localName === name);
+
+// ---------------------------------------------------------------- read an EPUB
+async function openEpub(file) {
+  const zip = await JSZip.loadAsync(file);
+  const containerFile = zip.file("META-INF/container.xml");
+  if (!containerFile) throw new Error("no container");
+  const container = parseXML(await containerFile.async("string"));
+  const rf = byLocal(container, "rootfile")[0];
+  const opfPath = rf && rf.getAttribute("full-path");
+  if (!opfPath || !zip.file(opfPath)) throw new Error("no opf");
+  const opf = parseXML(await zip.file(opfPath).async("string"));
+  if (broken(opf)) throw new Error("bad opf");
+  const pkg = opf.documentElement;
+  const version = (pkg.getAttribute("version") || "2.0").startsWith("3") ? 3 : 2;
+  const metadata = byLocal(pkg, "metadata")[0], manifestEl = byLocal(pkg, "manifest")[0], spineEl = byLocal(pkg, "spine")[0];
+  const items = byLocal(manifestEl, "item").map(el => ({
+    el, id: el.getAttribute("id"), href: el.getAttribute("href") || "", path: resolve(opfPath, el.getAttribute("href") || ""),
+    type: el.getAttribute("media-type") || "", props: (el.getAttribute("properties") || "").split(/\s+/).filter(Boolean),
+  }));
+  const byId = Object.fromEntries(items.map(i => [i.id, i]));
+  const spine = byLocal(spineEl, "itemref").map(r => byId[r.getAttribute("idref")]).filter(Boolean);
+
+  // raw packaging check: mimetype must be the first entry, stored, with the exact content
+  const raw = new Uint8Array(await file.arrayBuffer());
+  const packOk = raw.length > 58 && raw[0] === 0x50 && raw[1] === 0x4b && raw[8] === 0 && raw[9] === 0 &&
+    new TextDecoder().decode(raw.slice(30, 38)) === "mimetype" && new TextDecoder().decode(raw.slice(38, 58)) === "application/epub+zip";
+
+  const b = { file, zip, opfPath, opf, pkg, version, metadata, manifestEl, spineEl, items, byId, spine, packOk,
+    edits: {}, docs: {}, replaced: 0, newCover: null, coverURL: null, tocDirty: false, tocBuilt: false };
+  b.meta = readMeta(b);
+  b.metaOrig = JSON.stringify(b.meta);
+  await findCover(b);
+  await readToc(b);
+  b.tocOrig = JSON.stringify(b.toc.map(e => e.label));
+  b.missing = items.filter(i => !zip.file(i.path)).map(i => i.path);
+  const listed = new Set(items.map(i => i.path));
+  b.extra = Object.keys(zip.files).filter(p => !zip.files[p].dir && p !== "mimetype" && !p.startsWith("META-INF/") && p !== opfPath && !listed.has(p) && !/(^|\/)(\.DS_Store|Thumbs\.db)$/.test(p) && !p.startsWith("__MACOSX/"));
+  b.brokenDocs = 0;
+  return b;
+}
+
+// ---------------------------------------------------------------- metadata
+function dcAll(b, name) { return Array.from(b.metadata.children).filter(e => e.namespaceURI === NS.dc && e.localName === name); }
+function metaEls(b) { return Array.from(b.metadata.children).filter(e => e.localName === "meta"); }
+function refines(b, id, prop) {
+  if (!id) return null;
+  const m = metaEls(b).find(e => e.getAttribute("refines") === "#" + id && e.getAttribute("property") === prop);
+  return m ? textOf(m) : null;
+}
+function readMeta(b) {
+  const creators = dcAll(b, "creator");
+  const authors = creators.filter(c => {
+    const role = c.getAttributeNS(NS.opf, "role") || refines(b, c.getAttribute("id"), "role");
+    return !role || role === "aut";
+  });
+  const main = authors[0] || creators[0];
+  const sort = main ? (main.getAttributeNS(NS.opf, "file-as") || refines(b, main.getAttribute("id"), "file-as") || "") : "";
+  let series = "", index = "";
+  const cs = metaEls(b).find(e => e.getAttribute("name") === "calibre:series");
+  if (cs) { series = cs.getAttribute("content") || ""; const ci = metaEls(b).find(e => e.getAttribute("name") === "calibre:series_index"); index = ci ? ci.getAttribute("content") || "" : ""; }
+  const col = metaEls(b).find(e => e.getAttribute("property") === "belongs-to-collection");
+  if (!series && col) { series = textOf(col); index = refines(b, col.getAttribute("id"), "group-position") || ""; }
+  if (index && /^\d+\.0+$/.test(index)) index = String(parseInt(index, 10));
+  const titles = dcAll(b, "title");
+  let title = textOf(titles[0]);
+  const ids = dcAll(b, "identifier");
+  const uid = b.pkg.getAttribute("unique-identifier");
+  const isbnEl = ids.find(e => /isbn/i.test(e.getAttributeNS(NS.opf, "scheme") || "") || /isbn/i.test(textOf(e))) || null;
+  const lang = textOf(dcAll(b, "language")[0]);
+  return {
+    title,
+    author: (authors.length ? authors : creators).map(textOf).filter(Boolean).join(" & "),
+    sort,
+    series, index,
+    publisher: textOf(dcAll(b, "publisher")[0]),
+    date: textOf(dcAll(b, "date")[0]).replace(/T.*$/, "").replace(/^(\d{4})-01-01$/, "$1"),
+    lang,
+    isbn: isbnEl ? textOf(isbnEl).replace(/^urn:isbn:/i, "") : "",
+    subjects: dcAll(b, "subject").map(textOf).filter(Boolean).join(", "),
+    desc: textOf(dcAll(b, "description")[0]).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+  };
+}
+function normLang(l) {
+  if (!l) return "";
+  const s = l.trim().replace("_", "-");
+  const low = s.toLowerCase();
+  if (LANG3[low]) return LANG3[low];
+  return /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/i.test(s) ? s : s;
+}
+function sortName(author) {
+  const first = (author || "").split("&")[0].trim();
+  if (!first || first.includes(",")) return first;
+  const parts = first.split(/\s+/);
+  if (parts.length < 2) return first;
+  return parts[parts.length - 1] + ", " + parts.slice(0, -1).join(" ");
+}
+
+// ---------------------------------------------------------------- cover
+function isImage(i) { return i && /^image\//.test(i.type); }
+async function docText(b, path) {
+  if (b.edits[path] != null) return b.edits[path];
+  const f = b.zip.file(path); return f ? await f.async("string") : null;
+}
+function firstImageIn(b, docPath, src) {
+  const d = new DOMParser().parseFromString(src, "application/xhtml+xml");
+  const doc = broken(d) ? new DOMParser().parseFromString(src, "text/html") : d;
+  const img = byLocal(doc, "img")[0];
+  const image = byLocal(doc, "image")[0];
+  let href = img ? img.getAttribute("src") : image ? (image.getAttribute("xlink:href") || image.getAttributeNS("http://www.w3.org/1999/xlink", "href") || image.getAttribute("href")) : null;
+  const words = textOf(doc.body || doc.documentElement).length;
+  return href ? { path: resolve(docPath, href), words } : null;
+}
+async function findCover(b) {
+  let item = b.items.find(i => i.props.includes("cover-image") && isImage(i));
+  const metaCover = metaEls(b).find(e => e.getAttribute("name") === "cover");
+  const viaMeta = metaCover ? (b.byId[metaCover.getAttribute("content")] || b.items.find(i => i.href === metaCover.getAttribute("content"))) : null;
+  if (!item && isImage(viaMeta)) item = viaMeta;
+  // cover page: guide/landmarks, else a first spine page that is just an image
+  let coverPage = null;
+  const guideRef = byLocal(b.pkg, "reference").find(r => (r.getAttribute("type") || "").toLowerCase() === "cover");
+  if (guideRef) coverPage = b.items.find(i => i.path === resolve(b.opfPath, guideRef.getAttribute("href")));
+  const firstPages = b.spine.slice(0, 2);
+  if (!coverPage) {
+    for (const p of firstPages) {
+      const src = await docText(b, p.path); if (!src) continue;
+      const im = firstImageIn(b, p.path, src);
+      if (im && im.words < 40) { coverPage = p; break; }
+    }
+  }
+  if (!item && coverPage) {
+    const src = await docText(b, coverPage.path);
+    const im = src && firstImageIn(b, coverPage.path, src);
+    if (im) item = b.items.find(i => i.path === im.path);
+  }
+  if (!item) item = b.items.find(i => isImage(i) && /cover/i.test(i.id + " " + i.href));
+  b.cover = item || null;
+  b.coverPage = coverPage || null;
+  b.coverDeclared = !!(item && metaCover && viaMeta === item && (b.version === 2 || item.props.includes("cover-image")));
+  if (item && b.zip.file(item.path)) {
+    const blob = await b.zip.file(item.path).async("blob");
+    b.coverURL = URL.createObjectURL(new Blob([blob], { type: item.type }));
+  }
+}
+
+async function prepareCover(file) {
+  const bmp = await createImageBitmap(file);
+  const w0 = bmp.width, h0 = bmp.height;
+  if (state.opt === "off" && /^image\/(jpeg|png|gif)$/.test(file.type)) {
+    const data = new Uint8Array(await file.arrayBuffer());
+    return { data, type: file.type, ext: file.type === "image/png" ? "png" : file.type === "image/gif" ? "gif" : "jpg", w: w0, h: h0 };
+  }
+  const scale = state.opt === "on" ? Math.min(1, 1600 / h0) : 1;
+  const w = Math.round(w0 * scale), h = Math.round(h0 * scale);
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, w, h); g.drawImage(bmp, 0, 0, w, h);
+  const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.88));
+  return { data: new Uint8Array(await blob.arrayBuffer()), type: "image/jpeg", ext: "jpg", w, h };
+}
+
+// ---------------------------------------------------------------- table of contents
+async function readToc(b) {
+  b.toc = []; b.navItem = b.items.find(i => i.props.includes("nav")) || null;
+  const tocId = b.spineEl.getAttribute("toc");
+  b.ncxItem = (tocId && b.byId[tocId]) || b.items.find(i => i.type === "application/x-dtbncx+xml") || null;
+  b.tocSource = null;
+  if (b.navItem && b.zip.file(b.navItem.path)) {
+    const d = parseXML(await b.zip.file(b.navItem.path).async("string"));
+    if (!broken(d)) {
+      const nav = byLocal(d, "nav").find(n => (n.getAttributeNS(NS.ops, "type") || n.getAttribute("epub:type") || "").split(/\s+/).includes("toc"));
+      if (nav) {
+        const ol = byLocal(nav, "ol")[0];
+        const walk = (list, depth) => {
+          for (const li of Array.from(list.children).filter(e => e.localName === "li")) {
+            const a = Array.from(li.children).find(e => e.localName === "a" || e.localName === "span");
+            const href = a && a.getAttribute("href");
+            if (a) b.toc.push({ label: textOf(a), href: href ? resolve(b.navItem.path, href) + (href.includes("#") ? "#" + href.split("#")[1] : "") : "", depth });
+            const sub = Array.from(li.children).find(e => e.localName === "ol");
+            if (sub) walk(sub, depth + 1);
+          }
+        };
+        if (ol) walk(ol, 0);
+        b.tocSource = "nav";
+      }
+    }
+  }
+  if (!b.toc.length && b.ncxItem && b.zip.file(b.ncxItem.path)) {
+    const d = parseXML(await b.zip.file(b.ncxItem.path).async("string"));
+    if (!broken(d)) {
+      const navMap = byLocal(d, "navMap")[0];
+      const walk = (el, depth) => {
+        for (const np of Array.from(el.children).filter(e => e.localName === "navPoint")) {
+          const lab = byLocal(np, "text")[0], c = Array.from(np.children).find(e => e.localName === "content");
+          const src = c ? c.getAttribute("src") || "" : "";
+          b.toc.push({ label: textOf(lab), href: src ? resolve(b.ncxItem.path, src) + (src.includes("#") ? "#" + src.split("#")[1] : "") : "", depth });
+          walk(np, depth + 1);
+        }
+      };
+      if (navMap) walk(navMap, 0);
+      b.tocSource = "ncx";
+    }
+  }
+  b.hasNav = !!b.navItem; b.hasNcx = !!(b.ncxItem && b.zip.file(b.ncxItem.path));
+}
+
+async function buildTocFromHeadings(b) {
+  const out = [];
+  for (const it of b.spine) {
+    if (b.coverPage && it === b.coverPage) continue;
+    const src = await docText(b, it.path); if (!src) continue;
+    let d = new DOMParser().parseFromString(src, "application/xhtml+xml");
+    if (broken(d)) d = new DOMParser().parseFromString(src, "text/html");
+    const h = ["h1", "h2", "h3"].map(n => byLocal(d, n)[0]).find(Boolean);
+    let label = h ? textOf(h) : textOf(byLocal(d, "title")[0]);
+    const words = textOf(d.body || d.documentElement).length;
+    if (!label || /^(untitled|part\d+|leaf ?\d+|index_split_\d+)$/i.test(label)) {
+      if (words < 200) continue;
+      label = textOf(d.body || d.documentElement).slice(0, 48) + "…";
+    }
+    out.push({ label: label.slice(0, 160), href: it.path, depth: 0 });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- find & replace (text nodes only)
+function makeRegex() {
+  const f = $("#f-find").value; if (!f) return null;
+  let src = $("#f-re").checked ? f : f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if ($("#f-word").checked) src = `(?<![\\p{L}\\p{N}_])(?:${src})(?![\\p{L}\\p{N}_])`;
+  return new RegExp(src, "gu" + ($("#f-case").checked ? "" : "i"));
+}
+async function chapterDoc(b, it) {
+  if (b.docs[it.path]) return b.docs[it.path];
+  const src = await docText(b, it.path); if (!src) return null;
+  const d = new DOMParser().parseFromString(src, "application/xhtml+xml");
+  if (broken(d)) { b.docs[it.path] = "broken"; return "broken"; }
+  b.docs[it.path] = d; return d;
+}
+function textNodes(d) {
+  const body = byLocal(d, "body")[0] || d.documentElement, out = [];
+  const w = d.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  let n; while ((n = w.nextNode())) { const p = n.parentNode && n.parentNode.localName; if (p !== "script" && p !== "style") out.push(n); }
+  return out;
+}
+async function find(replaceAll) {
+  const b = book; if (!b) return;
+  let re; try { re = makeRegex(); } catch (e) { showCount(t("badRe")); return; }
+  if (!re) return;
+  const repl = $("#f-repl").value;
+  const hits = []; let total = 0, files = 0, broke = 0;
+  for (const it of b.spine) {
+    if (!/xhtml|html/.test(it.type)) continue;
+    const d = await chapterDoc(b, it);
+    if (d === "broken") { broke++; continue; }
+    if (!d) continue;
+    let inFile = 0, changed = false;
+    for (const n of textNodes(d)) {
+      const s = n.nodeValue; re.lastIndex = 0;
+      if (!re.test(s)) continue;
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(s))) {
+        if (m[0] === "") { re.lastIndex++; continue; }
+        inFile++; total++;
+        if (!replaceAll && hits.length < 200) hits.push({ file: it.href, pre: s.slice(Math.max(0, m.index - 50), m.index), hit: m[0], post: s.slice(m.index + m[0].length, m.index + m[0].length + 50) });
+      }
+      if (replaceAll) { re.lastIndex = 0; n.nodeValue = s.replace(re, repl); changed = true; }
+    }
+    if (inFile) files++;
+    if (changed) b.edits[it.path] = serialize(d);
+  }
+  b.brokenDocs = broke;
+  if (replaceAll) {
+    b.replaced += total;
+    $("#f-hits").hidden = true; $("#f-all").disabled = true;
+    showCount(total ? t("replaced")(total) : t("none"));
+    renderChecks(); renderChanges();
+    return;
+  }
+  showCount(total ? t("found")(total, files) + (total > hits.length ? t("foundMore")(hits.length) : "") : t("none"));
+  const ul = $("#f-hits");
+  ul.hidden = !hits.length;
+  ul.innerHTML = hits.map(h => `<li><span class="f">${esc(h.file)}</span>…${esc(h.pre)}<mark>${esc(h.hit)}</mark>${esc(h.post)}…</li>`).join("");
+  $("#f-all").disabled = !total;
+  renderChecks();
+}
+function showCount(s) { const c = $("#f-count"); c.hidden = !s; c.textContent = s; }
+
+// ---------------------------------------------------------------- export
+function setDC(b, doc, name, values) {
+  dcAll(b, name).forEach(e => e.remove());
+  const els = [];
+  for (const v of values.filter(Boolean)) {
+    const e = doc.createElementNS(NS.dc, "dc:" + name); e.textContent = v; b.metadata.appendChild(e); els.push(e);
+  }
+  return els;
+}
+function addMeta(b, doc, attrs, text) {
+  const e = doc.createElementNS(NS.opf, "meta");
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text != null) e.textContent = text;
+  b.metadata.appendChild(e); return e;
+}
+function navXhtml(b, navPath, toc, lang) {
+  const items = [];
+  let depth = 0, first = true;
+  const open = [];
+  // build nested <ol> from flat list with depths
+  let html = "<ol>";
+  let cur = 0;
+  toc.forEach((e, i) => {
+    const d = Math.min(e.depth, cur + (i === 0 ? 0 : 1));
+    if (i > 0) {
+      if (d > cur) html += "<ol>";
+      else { html += "</li>"; for (let k = cur; k > d; k--) html += "</ol></li>"; }
+    }
+    cur = d;
+    const href = e.href ? relative(navPath, e.href.split("#")[0]) + (e.href.includes("#") ? "#" + e.href.split("#")[1] : "") : "";
+    html += `<li>${href ? `<a href="${esc(href)}">${esc(e.label || "—")}</a>` : `<span>${esc(e.label || "—")}</span>`}`;
+  });
+  if (toc.length) { html += "</li>"; for (let k = cur; k > 0; k--) html += "</ol></li>"; }
+  html += "</ol>";
+  const cover = b.coverPageOut ? `<li><a epub:type="cover" href="${esc(relative(navPath, b.coverPageOut))}">Cover</a></li>` : "";
+  const start = b.spine.find(i => i !== b.coverPage && i.path !== b.coverPageOut);
+  return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${esc(lang)}" xml:lang="${esc(lang)}">
+<head><meta charset="utf-8"/><title>Contents</title></head>
+<body>
+<nav epub:type="toc" id="toc"><h1>Contents</h1>${html}</nav>
+<nav epub:type="landmarks" id="landmarks" hidden=""><ol>${cover}${start ? `<li><a epub:type="bodymatter" href="${esc(relative(navPath, start.path))}">Start</a></li>` : ""}</ol></nav>
+</body>
+</html>`;
+}
+function ncxXml(b, ncxPath, toc, uid, title, author, oldNcx) {
+  let po = 0;
+  let xml = "", cur = -1;
+  const stack = [];
+  toc.forEach((e, i) => {
+    const d = Math.min(e.depth, cur + 1);
+    while (stack.length > d) { xml += "</navPoint>"; stack.pop(); }
+    po++;
+    const src = e.href ? relative(ncxPath, e.href.split("#")[0]) + (e.href.includes("#") ? "#" + e.href.split("#")[1] : "") : "";
+    xml += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${esc(e.label || "—")}</text></navLabel><content src="${esc(src)}"/>`;
+    stack.push(po); cur = d;
+  });
+  while (stack.length) { xml += "</navPoint>"; stack.pop(); }
+  let pageList = "";
+  if (oldNcx) {
+    const m = oldNcx.match(/<pageList[\s\S]*?<\/pageList>/);
+    if (m) pageList = m[0].replace(/playOrder="\d+"/g, () => `playOrder="${++po}"`);
+  }
+  return `<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+<head><meta name="dtb:uid" content="${esc(uid)}"/><meta name="dtb:depth" content="${Math.max(1, ...toc.map(e => e.depth + 1))}"/><meta name="dtb:totalPageCount" content="0"/><meta name="dtb:maxPageNumber" content="0"/></head>
+<docTitle><text>${esc(title)}</text></docTitle>${author ? `<docAuthor><text>${esc(author)}</text></docAuthor>` : ""}
+<navMap>${xml}</navMap>${pageList}
+</ncx>`;
+}
+function coverXhtml(lang, imgRel, w, h, v3) {
+  const style = `<style type="text/css">html, body { margin: 0; padding: 0; height: 100%; text-align: center; } div { height: 100%; } img { max-width: 100%; max-height: 100%; height: auto; }</style>`;
+  const img = `<img src="${esc(imgRel)}" alt="Cover"${w ? ` width="${w}" height="${h}"` : ""}/>`;
+  if (!v3) return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${esc(lang)}">
+<head><meta http-equiv="Content-Type" content="application/xhtml+xml; charset=utf-8"/><title>Cover</title>
+${style}
+</head>
+<body><div>${img}</div></body>
+</html>`;
+  return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${esc(lang)}" xml:lang="${esc(lang)}">
+<head><meta charset="utf-8"/><title>Cover</title>
+${style}
+</head>
+<body epub:type="cover"><div>${img}</div></body>
+</html>`;
+}
+function uniqueId(b, base) { let id = base, n = 1; while (b.byId[id]) id = base + "-" + (++n); return id; }
+function uniquePath(b, p) { let q = p, n = 1; while (b.zip.file(q) || b.items.some(i => i.path === q)) q = p.replace(/(\.[^.]+)$/, `-${++n}$1`); return q; }
+
+async function buildEpub() {
+  // Work on a fresh copy of the package document so repeated downloads stay consistent.
+  const b = Object.assign({}, book);
+  const doc = parseXML(serialize(book.opf));
+  b.opf = doc; b.pkg = doc.documentElement;
+  b.metadata = byLocal(b.pkg, "metadata")[0]; b.manifestEl = byLocal(b.pkg, "manifest")[0]; b.spineEl = byLocal(b.pkg, "spine")[0];
+  const itemEl = (id) => byLocal(b.manifestEl, "item").find(e => e.getAttribute("id") === id);
+  const opfDir = dirOf(b.opfPath);
+  const toHref = (p) => relative(b.opfPath, p);
+  const files = new Map();   // path -> string | Uint8Array (overrides)
+  const hybrid = state.fmt === "hybrid";
+  const v3 = b.version === 3 || hybrid;
+  const m = currentMeta();
+  const lang = normLang(m.lang) || "en";
+
+  // drop manifest entries for files that don't exist, declare unlisted ones
+  for (const p of b.missing) {
+    const it = book.items.find(i => i.path === p);
+    if (it && it.type !== "application/x-dtbncx+xml") { const e = itemEl(it.id); if (e) e.remove(); byLocal(b.spineEl, "itemref").filter(r => r.getAttribute("idref") === it.id).forEach(r => r.remove()); }
+  }
+  for (const p of b.extra) {
+    const e = doc.createElementNS(NS.opf, "item");
+    e.setAttribute("id", uniqueId(b, "x-" + p.split("/").pop().replace(/[^A-Za-z0-9_-]/g, "_").replace(/^([^A-Za-z_])/, "_$1")));
+    e.setAttribute("href", toHref(p)); e.setAttribute("media-type", mediaOf(p));
+    b.manifestEl.appendChild(e);
+  }
+
+  // ---- cover
+  let coverItemId = b.cover ? b.cover.id : null, coverPath = b.cover ? b.cover.path : null, cw = 0, ch = 0;
+  if (b.newCover) {
+    coverPath = uniquePath(b, opfDir + "images/cover." + b.newCover.ext);
+    files.set(coverPath, b.newCover.data);
+    coverItemId = uniqueId(b, "cover-image-new");
+    const e = doc.createElementNS(NS.opf, "item");
+    e.setAttribute("id", coverItemId); e.setAttribute("href", toHref(coverPath)); e.setAttribute("media-type", b.newCover.type);
+    b.manifestEl.appendChild(e);
+    cw = b.newCover.w; ch = b.newCover.h;
+  }
+  if (coverItemId) {
+    byLocal(b.manifestEl, "item").forEach(e => {
+      const props = (e.getAttribute("properties") || "").split(/\s+/).filter(p => p && p !== "cover-image");
+      if (e.getAttribute("id") === coverItemId && v3) props.push("cover-image");
+      if (props.length) e.setAttribute("properties", props.join(" ")); else e.removeAttribute("properties");
+    });
+    metaEls(b).filter(e => e.getAttribute("name") === "cover").forEach(e => e.remove());
+    // the cover page: rewrite the existing one when we replace the image, or create one
+    let pagePath = b.coverPage ? b.coverPage.path : null;
+    if (b.newCover || !pagePath) {
+      if (!pagePath) {
+        pagePath = uniquePath(b, opfDir + "cover.xhtml");
+        const id = uniqueId(b, "cover-page");
+        const e = doc.createElementNS(NS.opf, "item");
+        e.setAttribute("id", id); e.setAttribute("href", toHref(pagePath)); e.setAttribute("media-type", "application/xhtml+xml");
+        b.manifestEl.appendChild(e);
+        const r = doc.createElementNS(NS.opf, "itemref"); r.setAttribute("idref", id); r.setAttribute("linear", "yes");
+        b.spineEl.insertBefore(r, byLocal(b.spineEl, "itemref")[0] || null);
+      }
+      if (!cw && b.coverDims) { cw = b.coverDims.w; ch = b.coverDims.h; }
+      files.set(pagePath, coverXhtml(lang, relative(pagePath, coverPath), cw, ch, v3));
+    }
+    b.coverPageOut = pagePath;
+    // guide reference (EPUB 2 readers)
+    let guide = byLocal(b.pkg, "guide")[0];
+    if (!guide) { guide = doc.createElementNS(NS.opf, "guide"); b.pkg.appendChild(guide); }
+    byLocal(guide, "reference").filter(r => (r.getAttribute("type") || "").toLowerCase() === "cover").forEach(r => r.remove());
+    const gr = doc.createElementNS(NS.opf, "reference");
+    gr.setAttribute("type", "cover"); gr.setAttribute("title", "Cover"); gr.setAttribute("href", toHref(pagePath));
+    guide.insertBefore(gr, guide.firstChild);
+  }
+
+  // ---- metadata
+  const keepOpfAttrs = !v3;
+  const titleEls = dcAll(b, "title");
+  if (titleEls.length) { titleEls[0].textContent = m.title; } else setDC(b, doc, "title", [m.title]);
+  const authors = m.author.split("&").map(s => s.trim()).filter(Boolean);
+  const oldCreators = dcAll(b, "creator");
+  const others = oldCreators.filter(c => { const r = c.getAttributeNS(NS.opf, "role") || refines(b, c.getAttribute("id"), "role"); return r && r !== "aut"; });
+  oldCreators.filter(c => !others.includes(c)).forEach(c => {
+    const id = c.getAttribute("id"); if (id) metaEls(b).filter(e => e.getAttribute("refines") === "#" + id).forEach(e => e.remove());
+    c.remove();
+  });
+  authors.forEach((a, i) => {
+    const e = doc.createElementNS(NS.dc, "dc:creator"); e.textContent = a;
+    const id = "creator" + (i + 1); e.setAttribute("id", id);
+    const fileAs = i === 0 ? (m.sort || sortName(a)) : sortName(a);
+    b.metadata.insertBefore(e, others[0] || null);
+    if (keepOpfAttrs) { e.setAttributeNS(NS.opf, "opf:role", "aut"); if (fileAs) e.setAttributeNS(NS.opf, "opf:file-as", fileAs); }
+    else { addMeta(b, doc, { refines: "#" + id, property: "role", scheme: "marc:relators" }, "aut"); if (fileAs) addMeta(b, doc, { refines: "#" + id, property: "file-as" }, fileAs); }
+  });
+  setDC(b, doc, "publisher", [m.publisher]);
+  setDC(b, doc, "date", [m.date]);
+  setDC(b, doc, "language", [lang]);
+  setDC(b, doc, "subject", m.subjects.split(",").map(s => s.trim()));
+  setDC(b, doc, "description", [m.desc]);
+  // ISBN: keep the package identifier, add or update an ISBN identifier
+  const uidName = b.pkg.getAttribute("unique-identifier");
+  let ids = dcAll(b, "identifier");
+  let uidEl = ids.find(e => e.getAttribute("id") === uidName);
+  const isbnEl = ids.find(e => e !== uidEl && (/isbn/i.test(e.getAttributeNS(NS.opf, "scheme") || "") || /isbn/i.test(textOf(e))));
+  const isbn = m.isbn.trim();
+  if (isbn) {
+    const val = /^\d[\d-]{8,}[\dXx]$/.test(isbn) ? "urn:isbn:" + isbn.replace(/-/g, "") : isbn;
+    if (uidEl && /isbn/i.test(textOf(uidEl) + (uidEl.getAttributeNS(NS.opf, "scheme") || ""))) uidEl.textContent = val;
+    else if (isbnEl) isbnEl.textContent = val;
+    else { const e = doc.createElementNS(NS.dc, "dc:identifier"); e.textContent = val; b.metadata.appendChild(e); }
+  }
+  if (!uidEl) {
+    uidEl = doc.createElementNS(NS.dc, "dc:identifier");
+    uidEl.setAttribute("id", "bookid"); uidEl.textContent = "urn:uuid:" + (crypto.randomUUID ? crypto.randomUUID() : Date.now());
+    b.metadata.insertBefore(uidEl, b.metadata.firstChild); b.pkg.setAttribute("unique-identifier", "bookid");
+  }
+  // series: Calibre form (read by KOReader, Calibre, many readers) + EPUB 3 collection
+  metaEls(b).filter(e => /^calibre:series/.test(e.getAttribute("name") || "")).forEach(e => e.remove());
+  metaEls(b).filter(e => e.getAttribute("property") === "belongs-to-collection").forEach(e => {
+    const id = e.getAttribute("id"); if (id) metaEls(b).filter(x => x.getAttribute("refines") === "#" + id).forEach(x => x.remove()); e.remove();
+  });
+  if (m.series) {
+    addMeta(b, doc, { name: "calibre:series", content: m.series });
+    if (m.index) addMeta(b, doc, { name: "calibre:series_index", content: m.index });
+    if (v3) {
+      addMeta(b, doc, { property: "belongs-to-collection", id: "series" }, m.series);
+      addMeta(b, doc, { refines: "#series", property: "collection-type" }, "series");
+      if (m.index) addMeta(b, doc, { refines: "#series", property: "group-position" }, m.index);
+    }
+  }
+  if (coverItemId) addMeta(b, doc, { name: "cover", content: coverItemId });
+
+  // ---- version
+  if (v3) {
+    b.pkg.setAttribute("version", "3.0");
+    // EPUB 2 attributes are not allowed in EPUB 3: turn them into refinements or drop them
+    Array.from(b.metadata.children).forEach(e => {
+      for (const a of Array.from(e.attributes)) {
+        if (a.namespaceURI !== NS.opf) continue;
+        const id = e.getAttribute("id") || (() => { const n = uniqueId(b, "m-" + e.localName); e.setAttribute("id", n); return n; })();
+        if (a.localName === "file-as" || a.localName === "role") {
+          const prop = a.localName;
+          if (!metaEls(b).some(x => x.getAttribute("refines") === "#" + id && x.getAttribute("property") === prop))
+            addMeta(b, doc, prop === "role" ? { refines: "#" + id, property: "role", scheme: "marc:relators" } : { refines: "#" + id, property: "file-as" }, a.value);
+        }
+        e.removeAttributeNode(a);
+      }
+    });
+    metaEls(b).filter(e => e.getAttribute("property") === "dcterms:modified").forEach(e => e.remove());
+    addMeta(b, doc, { property: "dcterms:modified" }, new Date().toISOString().replace(/\.\d+Z$/, "Z"));
+    if (!b.pkg.getAttribute("xml:lang")) b.pkg.setAttribute("xml:lang", lang);
+  }
+
+  // ---- table of contents (both formats)
+  const toc = currentToc();
+  const title = m.title, author = authors[0] || "";
+  const uid = textOf(uidEl);
+  let ncxPath = b.ncxItem && b.zip.file(b.ncxItem.path) ? b.ncxItem.path : null;
+  const oldNcx = ncxPath ? await b.zip.file(ncxPath).async("string") : null;
+  const tocChanged = book.tocDirty || book.tocBuilt;
+  if (!ncxPath) {
+    ncxPath = uniquePath(b, opfDir + "toc.ncx");
+    const id = uniqueId(b, "ncx");
+    const e = doc.createElementNS(NS.opf, "item"); e.setAttribute("id", id); e.setAttribute("href", toHref(ncxPath)); e.setAttribute("media-type", "application/x-dtbncx+xml");
+    b.manifestEl.appendChild(e); b.spineEl.setAttribute("toc", id);
+  } else if (b.ncxItem) b.spineEl.setAttribute("toc", b.ncxItem.id);
+  if (!oldNcx || tocChanged || b.metaChanged) files.set(ncxPath, ncxXml(b, ncxPath, toc, uid, title, author, oldNcx));
+  else {
+    // the NCX must carry the same identifier as the package
+    const d = parseXML(oldNcx);
+    const um = !broken(d) && byLocal(d, "meta").find(e => e.getAttribute("name") === "dtb:uid");
+    if (um && um.getAttribute("content") !== uid) { um.setAttribute("content", uid); files.set(ncxPath, serialize(d)); }
+  }
+  if (v3) {
+    if (b.navItem && b.zip.file(b.navItem.path)) {
+      if (tocChanged) {
+        // rewrite only the toc <nav>, keep landmarks / page-list
+        const src = await b.zip.file(b.navItem.path).async("string");
+        const d = parseXML(src);
+        const fresh = parseXML(navXhtml(b, b.navItem.path, toc, lang));
+        const nav = !broken(d) && byLocal(d, "nav").find(n => (n.getAttributeNS(NS.ops, "type") || "").split(/\s+/).includes("toc"));
+        const newNav = byLocal(fresh, "nav")[0];
+        if (nav) { nav.parentNode.replaceChild(d.importNode(newNav, true), nav); files.set(b.navItem.path, serialize(d)); }
+        else files.set(b.navItem.path, navXhtml(b, b.navItem.path, toc, lang));
+      }
+    } else {
+      const navPath = uniquePath(b, opfDir + "nav.xhtml");
+      const id = uniqueId(b, "nav");
+      const e = doc.createElementNS(NS.opf, "item"); e.setAttribute("id", id); e.setAttribute("href", toHref(navPath));
+      e.setAttribute("media-type", "application/xhtml+xml"); e.setAttribute("properties", "nav");
+      b.manifestEl.appendChild(e);
+      files.set(navPath, navXhtml(b, navPath, toc, lang));
+    }
+  }
+
+  // EPUB 3 manifest properties that epubcheck and strict readers expect on content documents
+  if (v3) {
+    for (const e of byLocal(b.manifestEl, "item")) {
+      if (e.getAttribute("media-type") !== "application/xhtml+xml") continue;
+      const p = resolve(b.opfPath, e.getAttribute("href"));
+      const src = files.has(p) ? files.get(p) : (book.edits[p] != null ? book.edits[p] : (b.zip.file(p) ? await b.zip.file(p).async("string") : ""));
+      const props = new Set((e.getAttribute("properties") || "").split(/\s+/).filter(Boolean));
+      ["svg", "scripted", "remote-resources"].forEach(x => props.delete(x));
+      if (/<svg[\s>]/i.test(src)) props.add("svg");
+      if (/<script[\s>]/i.test(src)) props.add("scripted");
+      if (/(src|href)\s*=\s*["']https?:/i.test(src.replace(/<a\s[^>]*>/gi, ""))) props.add("remote-resources");
+      if (props.size) e.setAttribute("properties", Array.from(props).join(" ")); else e.removeAttribute("properties");
+    }
+  }
+
+  // ---- write the zip: mimetype first, stored
+  const out = new JSZip();
+  out.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  out.file("META-INF/container.xml", `<?xml version="1.0" encoding="utf-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="${esc(b.opfPath)}" media-type="application/oebps-package+xml"/></rootfiles></container>`);
+  // EPUB 2 chapters inside an EPUB 3 package: modernise the two header lines EPUB 3 rejects.
+  const upgrade = b.version === 2 && v3;
+  const xhtmlPaths = new Set(byLocal(b.manifestEl, "item").filter(e => e.getAttribute("media-type") === "application/xhtml+xml").map(e => resolve(b.opfPath, e.getAttribute("href"))));
+  const modernise = (s) => s
+    .replace(/<!DOCTYPE\s+html\s+PUBLIC[^>]*>/i, "<!DOCTYPE html>")
+    .replace(/<meta\s+[^>]*http-equiv\s*=\s*["']content-type["'][^>]*>/gi, '<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>');
+  for (const [p, f] of Object.entries(b.zip.files)) {
+    if (f.dir || p === "mimetype" || p === "META-INF/container.xml" || p === b.opfPath || p.startsWith("__MACOSX/") || /(^|\/)(\.DS_Store|Thumbs\.db)$/.test(p)) continue;
+    if (files.has(p)) continue;
+    if (upgrade && xhtmlPaths.has(p)) { out.file(p, modernise(book.edits[p] != null ? book.edits[p] : await f.async("string"))); continue; }
+    if (book.edits[p] != null) { out.file(p, book.edits[p]); continue; }
+    const store = /\.(jpe?g|png|gif|webp|woff2?|mp3|mp4)$/i.test(p);
+    out.file(p, await f.async("uint8array"), { compression: store ? "STORE" : "DEFLATE" });
+  }
+  for (const [p, data] of files) out.file(p, data);
+  out.file(b.opfPath, serialize(doc).replace(/>\s*\n(\s*\n)+/g, ">\n").replace(/><(dc:|meta |\/metadata)/g, ">\n    <$1"));
+  return out.generateAsync({ type: "blob", mimeType: "application/epub+zip", compression: "DEFLATE", compressionOptions: { level: 9 } });
+}
+
+// ---------------------------------------------------------------- UI: current values
+const FIELDS = ["title", "author", "sort", "series", "index", "publisher", "date", "lang", "isbn", "subjects", "desc"];
+function currentMeta() {
+  const m = {};
+  for (const k of FIELDS) m[k] = ($("#m-" + k).value || "").trim();
+  return m;
+}
+function currentToc() {
+  return book.toc.map((e, i) => ({ ...e, label: ($(`#toc-${i}`) ? $(`#toc-${i}`).value : e.label).trim() }));
+}
+function fillMeta() {
+  const m = book.meta;
+  for (const k of FIELDS) if (k !== "lang") $("#m-" + k).value = m[k] || "";
+  $("#m-sort").placeholder = sortName(m.author);
+  fillLang(normLang(m.lang));
+}
+function fillLang(code) {
+  const sel = $("#m-lang");
+  const list = LANGS.slice();
+  if (code && !list.some(([c]) => c === code)) list.unshift([code, code]);
+  sel.innerHTML = `<option value="">—</option>` + list.map(([c, n]) => `<option value="${esc(c)}">${esc(n)} · ${esc(c)}</option>`).join("");
+  sel.value = code || "";
+}
+function renderToc() {
+  const ol = $("#toc");
+  ol.innerHTML = book.toc.map((e, i) => `<li style="padding-left:${Math.min(e.depth, 4) * 18}px"><input class="txt" id="toc-${i}" value="${esc(e.label)}" aria-label="${i + 1}"><span class="where" title="${esc(e.href)}">${esc((e.href || "").split("/").pop())}</span></li>`).join("");
+  $("#tocempty").hidden = book.toc.length > 0;
+  $("#tocsum").textContent = book.toc.length ? t("entries")(book.toc.length) : "";
+}
+function renderCover() {
+  const img = $("#coverimg");
+  const url = book && (book.newCover ? book.newCover.url : book.coverURL);
+  img.hidden = !url; if (url) img.src = url;
+  $("#nocover").hidden = !!url;
+  $("#nocover").textContent = book ? t("noCover") : t("noBook");
+  const m = book ? currentMeta() : null;
+  $("#bm-title").textContent = m ? m.title : "";
+  $("#bm-author").textContent = m ? m.author : "";
+  let cap = "";
+  if (book && book.newCover) cap = `${t("coverNew")} · ${t("coverInfo")(book.newCover.w, book.newCover.h, bytes(book.newCover.data.length))}`;
+  else if (book && book.coverDims) cap = `${t("coverOrig")} · ${t("coverInfo")(book.coverDims.w, book.coverDims.h, bytes(book.coverDims.size))}`;
+  $("#caption").textContent = cap;
+  $("#coverundo").hidden = !(book && book.newCover);
+}
+function checkRow(kind, title, detail) {
+  const ico = kind === "ok" ? "✓" : kind === "fix" ? "!" : "✕";
+  return `<li class="${kind}"><span class="ico" aria-hidden="true">${ico}</span><div><b>${title}</b><span>${detail}</span></div></li>`;
+}
+function renderChecks() {
+  if (!book) return;
+  const b = book, rows = [], m = currentMeta();
+  let toFix = 0;
+  // cover
+  if (b.newCover) rows.push(checkRow("ok", t("ckCoverNew"), t("ckCoverNewD")));
+  else if (!b.cover) { rows.push(checkRow("bad", t("ckCoverBad"), t("ckCoverBadD"))); toFix++; }
+  else if (!b.coverDeclared || (state.fmt === "hybrid" && !b.cover.props.includes("cover-image"))) { rows.push(checkRow("fix", t("ckCoverFix"), t("ckCoverFixD"))); toFix++; }
+  else rows.push(checkRow("ok", t("ckCoverOk"), t("ckCoverOkD")));
+  // toc
+  const n = b.toc.length;
+  if (!n) { rows.push(checkRow("bad", t("ckTocBad"), t("ckTocBadD"))); toFix++; }
+  else if (b.spine.length > 6 && n < b.spine.length / 3) { rows.push(checkRow("fix", t("ckTocFew")(n), t("ckTocFewD"))); toFix++; }
+  else if (!b.hasNcx || (!b.hasNav && state.fmt === "hybrid")) { rows.push(checkRow("fix", t("ckTocFix")(n), t("ckTocFixD")(b.hasNav ? "EPUB 3" : "EPUB 2"))); toFix++; }
+  else rows.push(checkRow("ok", t("ckTocOk")(n), t("ckTocOkD")));
+  // language
+  const lang = m.lang;
+  if (!lang) { rows.push(checkRow("bad", t("ckLangBad"), t("ckLangBadD"))); toFix++; }
+  else if (b.meta.lang && normLang(b.meta.lang) !== b.meta.lang && lang === normLang(b.meta.lang)) { rows.push(checkRow("fix", t("ckLangFix")(b.meta.lang), t("ckLangFixD")(lang))); toFix++; }
+  else rows.push(checkRow("ok", t("ckLangOk")(lang), t("ckLangOkD")));
+  // title / author
+  if (!m.title || !m.author) { rows.push(checkRow("bad", t("ckMetaBad"), t("ckMetaBadD"))); toFix++; }
+  else rows.push(checkRow("ok", t("ckMetaOk"), t("ckMetaOkD")));
+  // files
+  const list = (a) => esc(a.slice(0, 4).join(", ") + (a.length > 4 ? "…" : ""));
+  if (b.missing.length) { rows.push(checkRow("fix", t("ckMissing")(b.missing.length), t("ckMissingD")(list(b.missing)))); toFix++; }
+  if (b.extra.length) { rows.push(checkRow("fix", t("ckExtra")(b.extra.length), t("ckExtraD")(list(b.extra)))); toFix++; }
+  if (!b.missing.length && !b.extra.length) rows.push(checkRow("ok", t("ckFilesOk")(b.items.length), t("ckFilesOkD")));
+  if (!b.packOk) { rows.push(checkRow("fix", t("ckPackFix"), t("ckPackFixD"))); toFix++; }
+  else rows.push(checkRow("ok", t("ckPackOk"), t("ckPackOkD")));
+  if (b.brokenDocs) rows.push(checkRow("fix", t("ckBroken")(b.brokenDocs), t("ckBrokenD")));
+  $("#checks").innerHTML = rows.join("");
+  $("#checksum").textContent = t("ckSum")(rows.length, toFix);
+}
+function renderChanges() {
+  if (!book) { $("#changes").innerHTML = ""; return; }
+  const b = book, c = [];
+  const hybrid = state.fmt === "hybrid";
+  if (b.newCover) c.push(t("chCover"));
+  else if (b.cover && (!b.coverDeclared || (hybrid && !b.cover.props.includes("cover-image")) || !b.coverPage)) c.push(t("chCoverDecl"));
+  if (JSON.stringify(currentMeta()) !== b.metaOrig) c.push(t("chMeta"));
+  if (b.tocBuilt) c.push(t("chTocNew"));
+  else if (b.toc.length && JSON.stringify(currentToc().map(e => e.label)) !== b.tocOrig) c.push(t("chToc"));
+  if (b.replaced) c.push(t("chText")(b.replaced));
+  if (hybrid && b.version === 2) c.push(t("chHybrid"));
+  else if (hybrid && !b.hasNav) c.push(t("chNav"));
+  if (!b.hasNcx && b.toc.length) c.push(t("chNcx"));
+  if (b.missing.length || b.extra.length) c.push(t("chFiles"));
+  if (!b.packOk) c.push(t("chPack"));
+  if (!c.length) c.push(t("chNone"));
+  $("#changes").innerHTML = `<li style="list-style:none;margin-left:-18px">${t("chHead")}</li>` + c.map(s => `<li>${esc(s)}</li>`).join("");
+  $("#fmthint").textContent = b.version === 2 ? t("fmtHint2") : t("fmtHint3");
+}
+function outName() {
+  if (!book) return "";
+  const m = currentMeta();
+  const base = [m.title, m.author.split("&")[0].trim()].filter(Boolean).join(" - ") || book.file.name.replace(/\.epub$/i, "");
+  return base.normalize("NFC").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 140) + ".epub";
+}
+function refreshAll() {
+  renderChecks(); renderChanges(); renderCover();
+  $("#outname").textContent = outName();
+}
+
+// ---------------------------------------------------------------- delivery
+let dlApi;
+const inViewer = !!(window.claude && window.claude.use);
+const viewerReady = inViewer ? window.claude.use("downloads").then(d => (dlApi = d)).catch(() => null) : Promise.resolve(null);
+async function deliver(name, blob) {
+  await viewerReady;
+  if (dlApi) {
+    const z = new JSZip(); z.file(name, blob, { compression: "STORE" });
+    const zb = await z.generateAsync({ type: "blob" });
+    const n = name.replace(/\.epub$/i, ".zip");
+    try { await dlApi.save({ filename: n, data: zb }); say(t("done")(n) + " · " + t("zipped")); }
+    catch (e) { say(e && e.code === "declined" ? t("declined") : t("failed") + (e && e.message || e)); }
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  say(t("done")(name));
+}
+function say(s) { $("#status").textContent = s; }
+
+// ---------------------------------------------------------------- wiring
+async function loadFile(file) {
+  if (!file) return;
+  if (!window.JSZip) { say(t("noLib")); return; }
+  say(t("reading"));
+  try {
+    if (book && book.coverURL) URL.revokeObjectURL(book.coverURL);
+    book = await openEpub(file);
+    if (book.coverURL) {
+      try { const bm = await createImageBitmap(await (await fetch(book.coverURL)).blob()); book.coverDims = { w: bm.width, h: bm.height, size: (await book.zip.file(book.cover.path).async("uint8array")).length }; } catch (e) {}
+    }
+  } catch (e) {
+    console.error(e); book = null; say(t("notEpub")); $("#controls").classList.add("locked"); renderCover(); return;
+  }
+  $("#controls").classList.remove("locked");
+  $("#fileinfo").hidden = false;
+  $("#fileinfo").textContent = t("fileinfo")(file.name, bytes(file.size), book.version, book.spine.length);
+  fillMeta(); renderToc();
+  book.metaOrig = JSON.stringify(currentMeta());
+  $("#f-hits").hidden = true; showCount(""); $("#f-all").disabled = true;
+  $("#go").disabled = false;
+  say("");
+  refreshAll();
+}
+function wireDrop(el, input, handler) {
+  input.addEventListener("change", () => { handler(input.files[0]); input.value = ""; });
+  el.addEventListener("dragover", (e) => { e.preventDefault(); el.classList.add("over"); });
+  el.addEventListener("dragleave", () => el.classList.remove("over"));
+  el.addEventListener("drop", (e) => { e.preventDefault(); el.classList.remove("over"); handler(e.dataTransfer.files[0]); });
+}
+wireDrop($("#drop"), $("#file"), loadFile);
+wireDrop($("#coverdrop"), $("#coverfile"), async (file) => {
+  if (!book || !file || !/^image\//.test(file.type)) return;
+  try {
+    const c = await prepareCover(file);
+    if (book.newCover && book.newCover.url) URL.revokeObjectURL(book.newCover.url);
+    c.url = URL.createObjectURL(new Blob([c.data], { type: c.type }));
+    c.source = file;
+    book.newCover = c;
+    refreshAll();
+  } catch (e) { say(t("failed") + (e.message || e)); }
+});
+$("#coverundo").addEventListener("click", () => { if (book && book.newCover) { URL.revokeObjectURL(book.newCover.url); book.newCover = null; refreshAll(); } });
+$("#tocgen").addEventListener("click", async () => {
+  if (!book) return;
+  const list = await buildTocFromHeadings(book);
+  if (!list.length) return;
+  book.toc = list; book.tocBuilt = true;
+  renderToc(); refreshAll();
+});
+$("#toc").addEventListener("input", () => { if (book) { book.tocDirty = true; renderChanges(); } });
+FIELDS.forEach(k => $("#m-" + k).addEventListener("input", () => {
+  if (k === "author") $("#m-sort").placeholder = sortName($("#m-author").value);
+  if (book) { book.metaChanged = true; refreshAll(); }
+}));
+$("#m-lang").addEventListener("change", () => { if (book) { book.metaChanged = true; refreshAll(); } });
+$("#f-go").addEventListener("click", () => find(false));
+$("#f-all").addEventListener("click", () => find(true));
+$("#f-find").addEventListener("keydown", (e) => { if (e.key === "Enter") find(false); });
+["#f-find", "#f-case", "#f-word", "#f-re"].forEach(s => $(s).addEventListener("input", () => { $("#f-all").disabled = true; }));
+$("#go").addEventListener("click", async () => {
+  if (!book) return;
+  $("#go").disabled = true; say(t("building"));
+  try {
+    // keep the sort field honest: if left empty, use the suggestion
+    if (!$("#m-sort").value.trim()) $("#m-sort").value = sortName($("#m-author").value);
+    const blob = await buildEpub();
+    await deliver(outName(), blob);
+  } catch (e) { console.error(e); say(t("failed") + (e.message || e)); }
+  $("#go").disabled = false;
+});
+
+function check(name, value) { const el = document.querySelector(`input[name="${name}"][value="${value}"]`); if (el) el.checked = true; }
+function applyUI() {
+  document.documentElement.lang = state.ui;
+  document.querySelectorAll("[data-t]").forEach(el => { const v = t(el.dataset.t); if (typeof v === "string") el.innerHTML = v; });
+  ["ui", "opt", "fmt"].forEach(k => check(k, state[k]));
+  if (book) { $("#fileinfo").textContent = t("fileinfo")(book.file.name, bytes(book.file.size), book.version, book.spine.length); renderToc(); }
+  else fillLang("");
+  refreshAll();
+}
+document.addEventListener("change", (e) => {
+  const el = e.target;
+  if (el.name === "ui") { state.ui = el.value; persist(); applyUI(); }
+  if (el.name === "opt") { state.opt = el.value; persist(); if (book && book.newCover) prepareCover(book.newCover.source).then(c => { URL.revokeObjectURL(book.newCover.url); c.url = URL.createObjectURL(new Blob([c.data], { type: c.type })); c.source = book.newCover.source; book.newCover = c; refreshAll(); }); }
+  if (el.name === "fmt") { state.fmt = el.value; persist(); refreshAll(); }
+});
+applyUI();
+if (!window.JSZip) say(t("noLib"));
+// test hook
+window.__epubfix = { get book() { return book; }, buildEpub, loadFile };
+</script>
+</body>
+</html>
