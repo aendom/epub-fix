@@ -133,6 +133,25 @@ textarea { min-height: 96px; resize: vertical; font-weight: 400; }
 .toc li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .toc .txt { padding: 6px 10px; font-weight: 400; }
 .toc .where { font: 400 11px/1.2 var(--f-mono); color: var(--muted); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* heading finder: candidates grouped by how they look */
+.hpanel { display: grid; gap: 12px; border: 1.5px solid var(--ink); background: var(--panel); padding: 14px; min-width: 0; }
+.hpanel > p { margin: 0; font-size: 13px; color: var(--muted); }
+.hgroups { display: grid; gap: 10px; max-height: 560px; overflow: auto; padding-right: 4px; }
+.hgroup { border: 1px solid var(--rule); background: var(--paper); min-width: 0; }
+.hgroup > .ghead { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; }
+.hgroup input[type=checkbox] { accent-color: var(--ink); width: 16px; height: 16px; margin: 0; }
+.ghead b { font: 700 14px/1.3 var(--f-body); display: block; }
+.ghead span { font-size: 12px; color: var(--muted); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ghead select { width: auto; padding: 5px 8px; font-size: 13px; }
+.hgroup details { border-top: 1px solid var(--rule); }
+.hgroup summary { cursor: pointer; padding: 6px 12px; font-size: 12px; color: var(--muted); }
+.hitems { list-style: none; margin: 0; padding: 0 12px 10px; display: grid; gap: 8px; }
+.hitems li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; }
+.hitems .ht { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.hitems .hc { display: block; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.hitems .hf { font: 400 11px/1.4 var(--f-mono); color: var(--muted); }
+.hgroup.off .hitems { opacity: .5; }
 .empty { font-size: 14px; color: var(--muted); margin: 0; padding: 14px; border: 1.5px dashed var(--rule); }
 
 /* find & replace */
@@ -264,6 +283,11 @@ footer a, .hint a { color: var(--ink); }
         <ol class="toc" id="toc"></ol>
         <p class="empty" id="tocempty" data-t="tocEmpty" hidden></p>
         <div class="btn-row"><button class="mini" type="button" id="tocgen" data-t="tocGen"></button><button class="mini" type="button" id="tocundo" data-t="tocUndo" hidden></button></div>
+        <div class="hpanel" id="hpanel" hidden>
+          <p id="hsum"></p>
+          <div class="hgroups" id="hgroups"></div>
+          <div class="btn-row"><button class="mini ink" type="button" id="happly" data-t="hApply"></button><button class="mini" type="button" id="hcancel" data-t="hCancel"></button></div>
+        </div>
         <p class="hint" data-t="tocHint"></p>
       </div>
 
@@ -297,6 +321,8 @@ footer a, .hint a { color: var(--ink); }
           </div>
           <p class="hint" id="fmthint"></p>
         </div>
+        <div class="opts"><label><input type="checkbox" id="slim"><span data-t="slim"></span></label></div>
+        <p class="hint" id="slimhint" data-t="slimHint"></p>
         <ul class="changes" id="changes"></ul>
         <button class="btn" id="go" type="button" disabled><span data-t="go"></span><small id="outname"></small></button>
         <p class="status" id="status" role="status" aria-live="polite"></p>
@@ -335,9 +361,20 @@ const UI = {
     mSubjects: "Tags, separated by commas", mDesc: "Description",
     authorHint: "Separate several authors with &amp;. Sort as is how libraries order the book, for example <i>Cortázar, Julio</i>.",
     tocEmpty: "This book has no table of contents.",
-    tocGen: "Build from chapter headings", tocUndo: "Restore original chapters",
+    tocGen: "Find headings in the text", tocUndo: "Restore original chapters",
+    hApply: "Use as chapters", hCancel: "Cancel",
+    hSum: (n, g) => `Found ${n} possible headings in ${g} ${g === 1 ? "style" : "styles"}. Tick the groups that really are headings and choose their level; open a group to check each line in context and untick any that isn't.`,
+    hNone: "No headings found by their look. One entry per chapter file was used instead.",
+    hLevel: "Level", hSkip: "Not a heading", hLines: (n) => `See the ${n} ${n === 1 ? "line" : "lines"}`,
+    hBold: "bold", hItalic: "italic", hCaps: "capitals", hCenter: "centred", hLarge: "large", hTag: (n) => `heading ${n}`,
+    hPart: "starts with Part / Book", hChapter: "starts with Chapter or a Roman numeral", hNum: "numbered", hRepeat: "repeats on many pages",
+    hNext: "next:",
+    chHeadings: (n) => `${n} headings marked as real headings`,
+    slim: "Simplify the book's code", slimHint: "Removes empty tags that wrap every word in books converted from PDF or Word. The text stays the same; the file gets lighter and opens faster on small readers.",
+    chSlim: (n) => `Code simplified (${n.toLocaleString()} empty tags removed)`,
+    ckHeavy: (n) => `Heavy code · ${n.toLocaleString()} empty tags`, ckHeavyD: "Every word is wrapped in its own tag. Simplify the book's code in Download makes it lighter.",
     ckLegend: "<b>!</b> epub-fix fixes it by itself when you download. <b>✕</b> needs you.",
-    tocHint: "Rename entries here; the change goes into both kinds of table of contents, so every reader shows it. Building from headings replaces the list with one entry per chapter file.",
+    tocHint: "Rename entries here; the change goes into both kinds of table of contents, so every reader shows it. Find headings looks for lines that look like titles (bold, capitals, centred, larger) and lets you choose which ones become chapters.",
     fFind: "Find", fRepl: "Replace with", fCase: "Match case", fWord: "Whole words", fRe: "Pattern (regex)",
     fGo: "Find", fAll: "Replace all",
     findHint: "Searches the text of every chapter, never the code around it. A phrase broken by formatting (half in italics, for example) won't be found.",
@@ -406,9 +443,20 @@ const UI = {
     mSubjects: "Etiquetas, separadas por comas", mDesc: "Descripción",
     authorHint: "Separa varios autores con &amp;. Ordenar como es cómo las bibliotecas acomodan el libro, por ejemplo <i>Cortázar, Julio</i>.",
     tocEmpty: "Este libro no tiene índice.",
-    tocGen: "Crear desde los títulos de capítulo", tocUndo: "Restaurar capítulos originales",
+    tocGen: "Buscar títulos en el texto", tocUndo: "Restaurar capítulos originales",
+    hApply: "Usar como capítulos", hCancel: "Cancelar",
+    hSum: (n, g) => `Encontré ${n} posibles títulos en ${g} ${g === 1 ? "estilo" : "estilos"}. Palomea los grupos que sí son títulos y elige su nivel; abre un grupo para revisar cada línea en su contexto y desmarca la que no lo sea.`,
+    hNone: "No encontré títulos por su apariencia. Usé una entrada por archivo de capítulo.",
+    hLevel: "Nivel", hSkip: "No es título", hLines: (n) => `Ver ${n === 1 ? "la línea" : `las ${n} líneas`}`,
+    hBold: "negritas", hItalic: "cursiva", hCaps: "mayúsculas", hCenter: "centrado", hLarge: "grande", hTag: (n) => `título ${n}`,
+    hPart: "empieza con Parte / Libro", hChapter: "empieza con Capítulo o número romano", hNum: "numerado", hRepeat: "se repite en muchas páginas",
+    hNext: "sigue:",
+    chHeadings: (n) => `${n} títulos marcados como títulos reales`,
+    slim: "Aligerar el código del libro", slimHint: "Quita etiquetas vacías que envuelven cada palabra en libros convertidos desde PDF o Word. El texto queda igual; el archivo pesa menos y abre más rápido en lectores pequeños.",
+    chSlim: (n) => `Código aligerado (${n.toLocaleString()} etiquetas vacías quitadas)`,
+    ckHeavy: (n) => `Código pesado · ${n.toLocaleString()} etiquetas vacías`, ckHeavyD: "Cada palabra viene envuelta en su propia etiqueta. Aligerar el código del libro, en Descargar, lo hace más ligero.",
     ckLegend: "<b>!</b> epub-fix lo arregla solo al descargar. <b>✕</b> necesita tu ayuda.",
-    tocHint: "Renombra las entradas aquí; el cambio se guarda en los dos tipos de índice, así lo ve cualquier lector. Crear desde los títulos reemplaza la lista con una entrada por archivo de capítulo.",
+    tocHint: "Renombra las entradas aquí; el cambio se guarda en los dos tipos de índice, así lo ve cualquier lector. Buscar títulos encuentra las líneas que se ven como títulos (negritas, mayúsculas, centradas, más grandes) y te deja elegir cuáles serán capítulos.",
     fFind: "Buscar", fRepl: "Reemplazar por", fCase: "Mayúsculas exactas", fWord: "Palabras completas", fRe: "Patrón (regex)",
     fGo: "Buscar", fAll: "Reemplazar todo",
     findHint: "Busca en el texto de cada capítulo, nunca en el código. Una frase cortada por formato (mitad en cursiva, por ejemplo) no se encuentra.",
@@ -714,7 +762,305 @@ async function readToc(b) {
   b.hasNav = !!b.navItem; b.hasNcx = !!(b.ncxItem && b.zip.file(b.ncxItem.path));
 }
 
-async function buildTocFromHeadings(b) {
+// ---------------------------------------------------------------- heading finder
+// Many converted books have no real headings: titles are ordinary paragraphs that only *look* like titles.
+// We find short lines by their appearance, group them by style, and let the reader decide.
+async function cssMap(b) {
+  const map = {};
+  const add = (src) => {
+    for (const m of src.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      const body = m[2].toLowerCase();
+      const f = {};
+      const fw = body.match(/font-weight\s*:\s*([\w]+)/); if (fw) f.bold = /bold|bolder|[6-9]00/.test(fw[1]);
+      const fs = body.match(/font-style\s*:\s*(\w+)/); if (fs) f.italic = /italic|oblique/.test(fs[1]);
+      const ta = body.match(/text-align\s*:\s*(\w+)/); if (ta) f.center = ta[1] === "center";
+      const tt = body.match(/text-transform\s*:\s*(\w+)/); if (tt) f.caps = tt[1] === "uppercase";
+      // converters often say "bold" only through the font's name (scala-sans-b-, MinionPro-BoldIt, …)
+      const ff = body.match(/font-family\s*:\s*([^;]+)/);
+      if (ff) {
+        const name = ff[1].split(",")[0].replace(/["']/g, "").trim();
+        if (f.bold === undefined && /(bold|black|heavy|semibold|demi)|(^|[-_ ])(b|bd|bi|bdit|bx)([-_ ]|$)/i.test(name)) f.bold = true;
+        if (f.italic === undefined && /(italic|oblique)|(^|[-_ ])(i|it|bi|bdit)([-_ ]|$)|boldit$/i.test(name)) f.italic = true;
+      }
+      const sz = body.match(/font-size\s*:\s*([\d.]+)(em|%|rem|pt|px)?|font-size\s*:\s*([a-z-]+)/);
+      if (sz) {
+        let v = sz[3] ? ({ "large": 1.2, "x-large": 1.5, "xx-large": 2, "larger": 1.2, "medium": 1, "small": .85, "x-small": .7, "smaller": .85 })[sz[3]] || 1
+          : sz[2] === "%" ? +sz[1] / 100 : sz[2] === "pt" ? +sz[1] / 12 : sz[2] === "px" ? +sz[1] / 16 : +sz[1];
+        f.size = v;
+      }
+      for (const sel of m[1].split(",")) {
+        const cm = sel.trim().match(/\.([\w-]+)\s*$/);
+        if (cm) map[cm[1]] = Object.assign(map[cm[1]] || {}, f);
+      }
+    }
+  };
+  for (const it of b.items) if (it.type === "text/css" && b.zip.file(it.path)) add(await b.zip.file(it.path).async("string"));
+  return { map, add };
+}
+function ownStyle(el, css) {
+  const f = {};
+  for (const c of (el.getAttribute("class") || "").split(/\s+/)) if (css.map[c]) Object.assign(f, css.map[c]);
+  const st = (el.getAttribute("style") || "").toLowerCase();
+  if (/font-weight\s*:\s*(bold|bolder|[6-9]00)/.test(st)) f.bold = true;
+  if (/font-style\s*:\s*italic/.test(st)) f.italic = true;
+  if (/text-align\s*:\s*center/.test(st) || (el.getAttribute("align") || "").toLowerCase() === "center") f.center = true;
+  const sz = st.match(/font-size\s*:\s*([\d.]+)(em|%)/); if (sz) f.size = sz[2] === "%" ? +sz[1] / 100 : +sz[1];
+  const n = el.localName;
+  if (n === "b" || n === "strong" || /^h\d$/.test(n)) f.bold = f.bold !== false;
+  if (n === "i" || n === "em") f.italic = true;
+  if (n === "center") f.center = true;
+  if (n === "big") f.size = 1.2;
+  return f;
+}
+const BLOCKS = new Set(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "td", "blockquote", "center"]);
+function looks(el, css) {
+  // share of the text that is bold / italic / larger, plus alignment and capitals
+  const base = ownStyle(el, css);
+  let center = !!base.center, up = el.parentNode, depth = 0;
+  while (up && up.nodeType === 1 && depth < 4 && up.localName !== "body") { const s = ownStyle(up, css); if (s.center) center = true; up = up.parentNode; depth++; }
+  let total = 0, bold = 0, ital = 0, big = 0;
+  const walk = (node, inh) => {
+    for (const c of node.childNodes) {
+      if (c.nodeType === 3) {
+        const n = c.nodeValue.replace(/\s/g, "").length; total += n;
+        if (inh.bold) bold += n; if (inh.italic) ital += n; if ((inh.size || 1) >= 1.15) big += n;
+      } else if (c.nodeType === 1 && c.localName !== "sup" && c.localName !== "sub") {
+        const s = ownStyle(c, css);
+        walk(c, { bold: s.bold ?? inh.bold, italic: s.italic ?? inh.italic, size: s.size ? s.size * (inh.size || 1) : inh.size });
+      }
+    }
+  };
+  walk(el, { bold: base.bold, italic: base.italic, size: base.size || 1 });
+  const text = textOf(el), letters = text.replace(/[^\p{L}]/gu, "");
+  const caps = !!base.caps || (letters.length >= 3 && letters === letters.toUpperCase() && letters !== letters.toLowerCase());
+  return { bold: total && bold / total >= .8, italic: total && ital / total >= .8, large: total && big / total >= .8, center, caps };
+}
+function patternOf(text) {
+  if (/^(part|parte|book|libro|livre|teil|partie)\b.*\b(chapter|cap[ií]tulo|chapitre|kapitel)\b/i.test(text)) return "chapter";
+  if (/^(part|parte|book|libro|livre|teil|partie)\b/i.test(text)) return "part";
+  if (/^(chapter|cap[ií]tulo|chapitre|kapitel|capitolo)\b/i.test(text)) return "chapter";
+  if (/^[IVXLC]{1,6}\.?\s+["“'‘]?[\p{Lu}]/u.test(text) && text.replace(/[^\p{L}]/gu, "") === text.replace(/[^\p{L}]/gu, "").toUpperCase()) return "chapter";
+  if (/^\d{1,3}(\.\d{1,3})*\.?\s+\S/.test(text)) return "num";
+  return "";
+}
+async function findHeadingCandidates(b) {
+  const css = await cssMap(b);
+  const cands = [], seen = {};
+  const bookTitle = (currentMeta().title || "").toLowerCase();
+  for (const it of b.spine) {
+    if (!/xhtml|html/.test(it.type) || (b.coverPage && it === b.coverPage) || (b.navItem && it === b.navItem)) continue;
+    const d = await chapterDoc(b, it);
+    if (!d || d === "broken") continue;
+    for (const st of byLocal(d, "style")) css.add(st.textContent || "");
+    const body = byLocal(d, "body")[0]; if (!body) continue;
+    const els = Array.from(body.getElementsByTagName("*")).filter(e => BLOCKS.has(e.localName) && !Array.from(e.getElementsByTagName("*")).some(c => BLOCKS.has(c.localName) && c.localName !== "center"));
+    const before = cands.length;
+    els.forEach((el, k) => {
+      const text = textOf(el);
+      if (!text || text.length > 140 || (text.match(/\p{L}/gu) || []).length < 3) return;
+      const tag = /^h\d$/.test(el.localName) ? el.localName : "";
+      const pat = patternOf(text);
+      const L = looks(el, css);
+      const titleLike = tag || L.bold || L.large || (L.caps && L.center && text.length > 2);
+      if (!titleLike) return;
+      if (!tag && !pat && (/[,;]$/.test(text) || (/[.!?…]["”’)]?$/.test(text) && text.length > 45))) return;
+      if (!tag && L.italic && !L.bold && !L.large) return;          // epigraphs, captions
+      let next = "";
+      for (let j = k + 1; j < els.length && !next; j++) next = textOf(els[j]);
+      const key = [tag || "p", L.bold ? "b" : "", L.italic ? "i" : "", L.caps ? "c" : "", L.center ? "m" : "", L.large ? "l" : "", pat].join("|");
+      const low = text.toLowerCase();
+      (seen[low] = seen[low] || new Set()).add(it.path);
+      cands.push({ el, doc: d, path: it.path, href: it.href, text, next: next.slice(0, 110), key, pat, tag, L, isTitle: !!bookTitle && low.startsWith(bookTitle) });
+    });
+    // a page made almost only of title-like lines is a title page or a printed contents page
+    const here = cands.length - before;
+    const docText = textOf(body).length;
+    if ((here >= 6 && here >= els.filter(e => textOf(e)).length * 0.6) || (here >= 3 && docText < 700)) for (let k = before; k < cands.length; k++) cands[k].dense = true;
+  }
+  // group by look
+  const groups = new Map();
+  const files = new Set(cands.map(c => c.path)).size;
+  for (const c of cands) {
+    c.repeat = seen[c.text.toLowerCase()].size >= Math.max(5, files * 0.3);   // running heads
+    if (!groups.has(c.key)) groups.set(c.key, { key: c.key, items: [] });
+    groups.get(c.key).items.push(c);
+  }
+  const list = Array.from(groups.values());
+  for (const g of list) {
+    const c0 = g.items[0];
+    const pats = g.items.map(c => c.pat);
+    const pat = c0.pat;
+    const repeat = g.items.filter(c => c.repeat || c.isTitle).length > g.items.length / 2;
+    const dense = g.items.every(c => c.dense);
+    let level = 0;
+    if (c0.tag) level = Math.min(3, +c0.tag[1]);
+    else if (pat === "part") level = 1;
+    else if (pat === "chapter") level = 2;
+    else if (pat === "num") level = 3;
+    else if (c0.L.large || (c0.L.caps && c0.L.bold)) level = 1;
+    if (repeat || dense) level = 0;
+    g.level = level; g.on = level > 0; g.repeat = repeat;
+    g.items.forEach(c => { c.on = !(c.repeat || c.isTitle || c.dense); });
+  }
+  // largest / most structural first
+  list.sort((a, b2) => (a.level || 9) - (b2.level || 9) || b2.items.length - a.items.length);
+  return list;
+}
+function groupLabel(g) {
+  const c = g.items[0], L = c.L, parts = [];
+  if (c.tag) parts.push(t("hTag")(c.tag[1]));
+  if (L.bold && !c.tag) parts.push(t("hBold"));
+  if (L.large) parts.push(t("hLarge"));
+  if (L.caps) parts.push(t("hCaps"));
+  if (L.center) parts.push(t("hCenter"));
+  if (L.italic) parts.push(t("hItalic"));
+  if (c.pat) parts.push(t({ part: "hPart", chapter: "hChapter", num: "hNum" }[c.pat]));
+  if (g.repeat) parts.push(t("hRepeat"));
+  const s = parts.join(", ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function renderHeadingPanel() {
+  const gs = book.hgroups || [];
+  const total = gs.reduce((n, g) => n + g.items.length, 0);
+  $("#hsum").textContent = t("hSum")(total, gs.length);
+  const open = new Set(Array.from(document.querySelectorAll("#hgroups details[open]")).map(d => d.closest(".hgroup").dataset.g));
+  $("#hgroups").innerHTML = gs.map((g, gi) => `
+    <div class="hgroup${g.on ? "" : " off"}" data-g="${gi}">
+      <div class="ghead">
+        <input type="checkbox" data-gon="${gi}" ${g.on ? "checked" : ""} aria-label="${esc(groupLabel(g))}">
+        <div><b>${esc(groupLabel(g))} · ${g.items.length}</b><span>${esc(g.items.slice(0, 3).map(c => c.text).join(" · "))}</span></div>
+        <select data-glevel="${gi}" aria-label="${esc(t("hLevel"))}">
+          ${[1, 2, 3].map(l => `<option value="${l}" ${g.level === l ? "selected" : ""}>${t("hLevel")} ${l}</option>`).join("")}
+          <option value="0" ${!g.level ? "selected" : ""}>${t("hSkip")}</option>
+        </select>
+      </div>
+      <details${open.has(String(gi)) ? " open" : ""}><summary>${t("hLines")(g.items.length)}</summary>
+        <ul class="hitems">${g.items.map((c, ci) => `<li><input type="checkbox" data-c="${gi}:${ci}" ${c.on ? "checked" : ""}><div><span class="ht">${esc(c.text)}</span><span class="hc">${c.next ? `${esc(t("hNext"))} ${esc(c.next)}…` : ""}</span><span class="hf">${esc(c.href)}</span></div></li>`).join("")}</ul>
+      </details>
+    </div>`).join("");
+}
+function applyHeadings() {
+  const chosen = [];
+  for (const g of book.hgroups) {
+    if (!g.on || !g.level) continue;
+    for (const c of g.items) if (c.on) chosen.push({ c, level: g.level });
+  }
+  if (!chosen.length) return false;
+  // keep reading order: spine order, then order inside the document
+  const order = new Map(book.spine.map((it, i) => [it.path, i]));
+  chosen.sort((a, b2) => (order.get(a.c.path) - order.get(b2.c.path)) || (a.c.el.compareDocumentPosition(b2.c.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+  // squeeze the levels in use to 1, 2, 3
+  const used = Array.from(new Set(chosen.map(x => x.level))).sort();
+  const lv = (l) => used.indexOf(l) + 1;
+  const ids = new Map();
+  book.headings = chosen.map(({ c, level }) => {
+    let id = c.el.getAttribute("id");
+    if (!id) {
+      const taken = ids.get(c.doc) || new Set(Array.from(c.doc.getElementsByTagName("*")).map(e => e.getAttribute("id")).filter(Boolean));
+      ids.set(c.doc, taken);
+      let n = taken.size + 1; id = "ef-h" + n; while (taken.has(id)) id = "ef-h" + (++n);
+      taken.add(id); c.el.setAttribute("id", id);
+    }
+    return { el: c.el, doc: c.doc, path: c.path, level: lv(level), id, text: c.text };
+  });
+  let prev = 0;
+  book.toc = book.headings.map(h => { const d = Math.min(h.level - 1, prev + 1); prev = d; return { label: h.text.replace(/\s+/g, " "), href: h.path + "#" + h.id, depth: d }; });
+  book.tocBuilt = true; book.tocDirty = false;
+  return true;
+}
+// turn the chosen lines into real headings and give each file a useful <title>
+function materialiseHeadings(b) {
+  if (!b.headings || !b.tocBuilt) return 0;
+  const touched = new Set();
+  for (const h of b.headings) {
+    let el = h.el;
+    if (!el.parentNode) continue;
+    const want = "h" + Math.min(6, h.level);
+    if (el.localName !== want && !["li", "td", "th"].includes(el.localName)) {
+      const nh = h.doc.createElementNS(NS.xhtml, want);
+      for (const a of Array.from(el.attributes)) nh.setAttributeNS(a.namespaceURI, a.name, a.value);
+      while (el.firstChild) nh.appendChild(el.firstChild);
+      el.parentNode.replaceChild(nh, el);
+      h.el = nh;
+      nh.setAttribute("class", ((nh.getAttribute("class") || "") + " ef-h").trim());
+    }
+    touched.add(h.path);
+  }
+  const bookTitle = (currentMeta().title || "").toLowerCase();
+  const firstIn = {};
+  for (const h of b.headings) if (!firstIn[h.path]) firstIn[h.path] = h.text;
+  for (const path of touched) {
+    const d = b.docs[path];
+    const tt = byLocal(d, "title")[0];
+    if (tt && (!textOf(tt) || textOf(tt).toLowerCase().startsWith(bookTitle))) tt.textContent = firstIn[path];
+    // keep the converted headings looking like the paragraphs they were
+    const head = byLocal(d, "head")[0];
+    if (head && !byLocal(d, "style").some(s => (s.textContent || "").includes(".ef-h"))) {
+      const st = d.createElementNS(NS.xhtml, "style"); st.setAttribute("type", "text/css");
+      st.textContent = "h1.ef-h, h2.ef-h, h3.ef-h { font-size: inherit; page-break-after: avoid; } h1.ef-h { font-size: 1.2em; }";
+      head.appendChild(st);
+    }
+    b.edits[path] = serialize(d);
+  }
+  return touched.size;
+}
+
+// ---------------------------------------------------------------- lighter, EPUB 3-clean chapters
+const HTML4_ATTRS = ["text", "link", "vlink", "alink", "bgcolor", "cellpadding", "cellspacing", "valign", "hspace", "vspace", "background", "clear", "nowrap", "language"];
+function tidyDoc(d, { slim, html4 }) {
+  let removed = 0;
+  const body = byLocal(d, "body")[0] || d.documentElement;
+  if (slim) {
+    for (const sp of Array.from(body.getElementsByTagName("span"))) {
+      if (sp.attributes.length || !sp.parentNode) continue;
+      while (sp.firstChild) sp.parentNode.insertBefore(sp.firstChild, sp);
+      sp.parentNode.removeChild(sp); removed++;
+    }
+    if (removed) {
+      body.normalize();
+      const w = d.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      let n; while ((n = w.nextNode())) { const p = n.parentNode.localName; if (p !== "pre" && p !== "code" && /\n/.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace(/\s*\n\s*/g, " "); }
+    }
+  }
+  if (html4) {
+    const ids = new Set(Array.from(d.getElementsByTagName("*")).map(e => e.getAttribute("id")).filter(Boolean));
+    for (const e of Array.from(d.getElementsByTagName("*"))) {
+      const n = e.localName;
+      HTML4_ATTRS.forEach(a => e.removeAttribute(a));
+      if (n !== "img" && n !== "td" && n !== "th") e.removeAttribute("align");
+      if (["table", "td", "th", "tr", "col", "colgroup"].includes(n)) { e.removeAttribute("width"); e.removeAttribute("height"); }
+      if (n === "table") e.removeAttribute("border");
+      if (n === "img") { e.removeAttribute("name"); e.removeAttribute("border"); e.removeAttribute("align"); }
+      if (n === "a" && e.hasAttribute("name")) {
+        const nm = e.getAttribute("name"); e.removeAttribute("name");
+        if (!e.hasAttribute("id") && !ids.has(nm)) { e.setAttribute("id", nm); ids.add(nm); }
+      }
+    }
+    for (const c of Array.from(d.getElementsByTagName("col"))) c.parentNode.removeChild(c);
+    for (const c of Array.from(d.getElementsByTagName("colgroup"))) if (!c.firstElementChild) c.parentNode.removeChild(c);
+    // a table split across two files leaves bare rows behind
+    for (const tr of Array.from(d.getElementsByTagName("tr"))) {
+      const par = tr.parentNode;
+      if (!par || ["table", "tbody", "thead", "tfoot"].includes(par.localName)) continue;
+      const tbl = d.createElementNS(NS.xhtml, "table");
+      par.insertBefore(tbl, tr);
+      let x = tr;
+      while (x && (x.nodeType !== 1 || x.localName === "tr")) { const nx = x.nextSibling; tbl.appendChild(x); x = nx; }
+    }
+  }
+  return removed;
+}
+async function countEmptySpans(b) {
+  let n = 0;
+  for (const it of b.spine) {
+    if (!/html/.test(it.type) || !b.zip.file(it.path)) continue;
+    const s = await b.zip.file(it.path).async("string");
+    n += (s.match(/<span>/g) || []).length;
+  }
+  return n;
+}
+
+async function tocPerFile(b) {
   const out = [];
   // names the book already had for each file win over guesses
   const known = {};
@@ -1028,7 +1374,7 @@ async function buildEpub() {
     Array.from(b.metadata.children).forEach(e => {
       for (const a of Array.from(e.attributes)) {
         if (a.namespaceURI !== NS.opf) continue;
-        const id = e.getAttribute("id") || (() => { const n = uniqueId(b, "m-" + e.localName); e.setAttribute("id", n); return n; })();
+        const id = e.getAttribute("id") || (() => { const taken = new Set(Array.from(doc.getElementsByTagName("*")).map(x => x.getAttribute("id")).filter(Boolean)); let k = 1, n = "m-" + e.localName; while (taken.has(n) || b.byId[n]) n = "m-" + e.localName + "-" + (++k); e.setAttribute("id", n); return n; })();
         if (a.localName === "file-as" || a.localName === "role") {
           const prop = a.localName;
           if (!metaEls(b).some(x => x.getAttribute("refines") === "#" + id && x.getAttribute("property") === prop))
@@ -1041,6 +1387,9 @@ async function buildEpub() {
     addMeta(b, doc, { property: "dcterms:modified" }, new Date().toISOString().replace(/\.\d+Z$/, "Z"));
     if (!b.pkg.getAttribute("xml:lang")) b.pkg.setAttribute("xml:lang", lang);
   }
+
+  // ---- chosen headings become real headings
+  materialiseHeadings(book);
 
   // ---- table of contents (both formats)
   const toc = currentToc();
@@ -1084,6 +1433,32 @@ async function buildEpub() {
     }
   }
 
+  // ---- lighter code, and EPUB 2 chapters cleaned of what EPUB 3 forbids
+  const upgradeDocs = b.version === 2 && v3;
+  if (book.slim || upgradeDocs) {
+    let removed = 0;
+    for (const e of byLocal(b.manifestEl, "item")) {
+      if (e.getAttribute("media-type") !== "application/xhtml+xml" || (e.getAttribute("properties") || "").includes("nav")) continue;
+      const p = resolve(b.opfPath, e.getAttribute("href"));
+      if (files.has(p)) continue;
+      const src = book.edits[p] != null ? book.edits[p] : (b.zip.file(p) ? await b.zip.file(p).async("string") : null);
+      if (!src) continue;
+      const d = new DOMParser().parseFromString(src, "application/xhtml+xml");
+      if (broken(d)) continue;
+      removed += tidyDoc(d, { slim: book.slim, html4: upgradeDocs });
+      files.set(p, serialize(d));
+    }
+    book.slimmed = removed;
+  }
+  if (v3) {
+    for (const it of b.items) {
+      if (it.type !== "text/css" || !b.zip.file(it.path) || files.has(it.path)) continue;
+      const c = await b.zip.file(it.path).async("string");
+      const c2 = c.replace(/(^|[;{\s])(direction|unicode-bidi)\s*:[^;}]*;?/gi, "$1");
+      if (c2 !== c) files.set(it.path, c2);
+    }
+  }
+
   // EPUB 3 manifest properties that epubcheck and strict readers expect on content documents
   if (v3) {
     for (const e of byLocal(b.manifestEl, "item")) {
@@ -1118,7 +1493,7 @@ async function buildEpub() {
     const store = /\.(jpe?g|png|gif|webp|woff2?|mp3|mp4)$/i.test(p);
     out.file(p, await f.async("uint8array"), { compression: store ? "STORE" : "DEFLATE" });
   }
-  for (const [p, data] of files) out.file(p, data);
+  for (const [p, data] of files) out.file(p, upgrade && xhtmlPaths.has(p) && typeof data === "string" ? modernise(data) : data);
   out.file(b.opfPath, serialize(doc).replace(/>\s*\n(\s*\n)+/g, ">\n").replace(/><(dc:|meta |\/metadata)/g, ">\n    <$1"));
   return out.generateAsync({ type: "blob", mimeType: "application/epub+zip", compression: "DEFLATE", compressionOptions: { level: 9 } });
 }
@@ -1203,6 +1578,7 @@ function renderChecks() {
   if (!b.packOk) { rows.push(checkRow("fix", t("ckPackFix"), t("ckPackFixD"))); toFix++; }
   else rows.push(checkRow("ok", t("ckPackOk"), t("ckPackOkD")));
   if (b.brokenDocs) rows.push(checkRow("fix", t("ckBroken")(b.brokenDocs), t("ckBrokenD")));
+  if (b.emptySpans > 2000) rows.push(checkRow(b.slim ? "fix" : "bad", t("ckHeavy")(b.emptySpans), t("ckHeavyD")));
   $("#checks").innerHTML = rows.join("");
   const cnt = (k) => rows.filter(r => r.startsWith(`<li class="${k}"`)).length;
   $("#checksum").textContent = t("ckSum")(cnt("fix"), cnt("bad"));
@@ -1217,6 +1593,8 @@ function renderChanges() {
   if (b.tocBuilt) c.push(t("chTocNew"));
   else if (b.toc.length && JSON.stringify(currentToc().map(e => e.label)) !== b.tocOrig) c.push(t("chToc"));
   if (b.replaced) c.push(t("chText")(b.replaced));
+  if (b.tocBuilt && b.headings && b.headings.length) c.push(t("chHeadings")(b.headings.length));
+  if (b.slim && b.emptySpans) c.push(t("chSlim")(b.emptySpans));
   if (hybrid && b.version === 2) c.push(t("chHybrid"));
   else if (hybrid && !b.hasNav) c.push(t("chNav"));
   if (!b.hasNcx && b.toc.length) c.push(t("chNcx"));
@@ -1276,6 +1654,10 @@ async function loadFile(file) {
   $("#controls").classList.remove("locked");
   $("#fileinfo").hidden = false;
   $("#fileinfo").textContent = t("fileinfo")(file.name, bytes(file.size), book.version, book.spine.length);
+  book.emptySpans = await countEmptySpans(book);
+  book.slim = book.emptySpans > 2000;
+  $("#slim").checked = book.slim;
+  $("#hpanel").hidden = true;
   fillMeta(); renderToc();
   book.metaOrig = JSON.stringify(currentMeta());
   $("#f-hits").hidden = true; showCount(""); $("#f-all").disabled = true;
@@ -1304,15 +1686,32 @@ wireDrop($("#coverdrop"), $("#coverfile"), async (file) => {
 $("#coverundo").addEventListener("click", () => { if (book && book.newCover) { URL.revokeObjectURL(book.newCover.url); book.newCover = null; refreshAll(); } });
 $("#tocgen").addEventListener("click", async () => {
   if (!book) return;
-  const list = await buildTocFromHeadings(book);
-  if (!list.length) return;
-  if (list.length < 2) return;
-  book.toc = list; book.tocBuilt = true; book.tocDirty = false;
+  if (!book.hgroups) book.hgroups = await findHeadingCandidates(book);
+  if (!book.hgroups.length) {
+    const list = await tocPerFile(book);
+    if (list.length >= 2) { book.toc = list; book.tocBuilt = true; book.tocDirty = false; book.headings = null; renderToc(); refreshAll(); }
+    say(t("hNone")); return;
+  }
+  renderHeadingPanel();
+  $("#hpanel").hidden = false;
+  $("#hpanel").scrollIntoView({ block: "nearest" });
+});
+$("#hgroups").addEventListener("change", (e) => {
+  const el = e.target, gs = book.hgroups;
+  if (el.dataset.gon != null) { const g = gs[+el.dataset.gon]; g.on = el.checked; if (g.on && !g.level) g.level = 2; renderHeadingPanel(); }
+  if (el.dataset.glevel != null) { const g = gs[+el.dataset.glevel]; g.level = +el.value; g.on = g.level > 0; renderHeadingPanel(); }
+  if (el.dataset.c != null) { const [gi, ci] = el.dataset.c.split(":").map(Number); gs[gi].items[ci].on = el.checked; }
+});
+$("#happly").addEventListener("click", () => {
+  if (!book || !applyHeadings()) return;
+  $("#hpanel").hidden = true;
   renderToc(); refreshAll();
 });
+$("#hcancel").addEventListener("click", () => { $("#hpanel").hidden = true; });
+$("#slim").addEventListener("change", () => { if (book) { book.slim = $("#slim").checked; refreshAll(); } });
 $("#tocundo").addEventListener("click", () => {
   if (!book) return;
-  book.toc = book.tocInitial.map(e => ({ ...e })); book.tocBuilt = false; book.tocDirty = false;
+  book.toc = book.tocInitial.map(e => ({ ...e })); book.tocBuilt = false; book.tocDirty = false; book.headings = null;
   renderToc(); refreshAll();
 });
 $("#toc").addEventListener("input", () => { if (book) { book.tocDirty = true; renderChanges(); $("#tocundo").hidden = false; } });
