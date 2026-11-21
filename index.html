@@ -180,6 +180,19 @@ textarea { min-height: 96px; resize: vertical; font-weight: 400; }
 .screen { display: grid; place-items: center; width: min(300px, 64vw); aspect-ratio: 480 / 800; background: #fff; overflow: hidden; position: relative; }
 .screen img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .screen .none { font: 700 18px/1.25 var(--f-display); color: #9a9e97; text-align: center; padding: 24px; }
+/* a page of the book shown on the reader while checking headings */
+.pagepv { position: absolute; inset: 0; background: #fff; color: #111; overflow: hidden; padding: 18px 16px;
+  font: 12.5px/1.5 Georgia, "Times New Roman", serif; text-align: left; }
+.pagepv p { margin: 0 0 .55em; }
+.pagepv .hl { background: var(--ink); color: var(--on-ink); padding: 2px 4px; margin-left: -4px; margin-right: -4px; }
+.pagepv .img { color: #888; font-style: italic; }
+.pagepv .pf { position: absolute; left: 16px; right: 16px; bottom: 8px; font: 400 10px/1.2 var(--f-mono); color: #888;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #fff; padding-top: 4px; }
+.hitems button.ht { all: unset; cursor: pointer; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+.hitems button.ht:hover, .hitems button.ht[aria-pressed=true] { text-decoration-color: var(--ink); }
+.hitems button.ht:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.hitems .pagepv { position: relative; inset: auto; height: 340px; margin-top: 8px; border: 1.5px solid var(--ink); grid-column: 1 / -1; }
+.hitems li.cur { background: color-mix(in srgb, var(--ink) 7%, transparent); outline: 6px solid color-mix(in srgb, var(--ink) 7%, transparent); }
 .bookmeta { text-align: center; max-width: 320px; display: grid; gap: 2px; }
 .bookmeta b { font: 700 17px/1.2 var(--f-display); overflow-wrap: anywhere; }
 .bookmeta span { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
@@ -282,7 +295,7 @@ footer a, .hint a { color: var(--ink); }
         <h2><span data-t="tocTitle"></span><small id="tocsum"></small></h2>
         <ol class="toc" id="toc"></ol>
         <p class="empty" id="tocempty" data-t="tocEmpty" hidden></p>
-        <div class="btn-row"><button class="mini" type="button" id="tocgen" data-t="tocGen"></button><button class="mini" type="button" id="tocundo" data-t="tocUndo" hidden></button></div>
+        <div class="btn-row"><button class="mini" type="button" id="tocgen" data-t="tocGen"></button><button class="mini" type="button" id="tocundo" data-t="tocUndo" hidden></button><button class="mini" type="button" id="toccase" data-t="tocCase" hidden></button></div>
         <div class="hpanel" id="hpanel" hidden>
           <p id="hsum"></p>
           <div class="hgroups" id="hgroups"></div>
@@ -330,7 +343,7 @@ footer a, .hint a { color: var(--ink); }
     </section>
 
     <div class="device-col">
-      <div class="device"><div class="screen" id="screen"><div class="none" id="nocover"></div><img id="coverimg" alt="" hidden></div></div>
+      <div class="device"><div class="screen" id="screen"><div class="none" id="nocover"></div><img id="coverimg" alt="" hidden><div class="pagepv" id="pagepv" hidden></div></div></div>
       <div class="bookmeta"><b id="bm-title"></b><span id="bm-author"></span></div>
       <p class="caption" id="caption"></p>
     </div>
@@ -362,6 +375,7 @@ const UI = {
     authorHint: "Separate several authors with &amp;. Sort as is how libraries order the book, for example <i>Cortázar, Julio</i>.",
     tocEmpty: "This book has no table of contents.",
     tocGen: "Find headings in the text", tocUndo: "Restore original chapters",
+    tocCase: "Fix CAPITALS in names", hView: "Tap a line to see it on its page in the reader.", pvFile: "file",
     hApply: "Use as chapters", hCancel: "Cancel",
     hSum: (n, g) => `Found ${n} possible headings in ${g} ${g === 1 ? "style" : "styles"}. Tick the groups that really are headings and choose their level; open a group to check each line in context and untick any that isn't.`,
     hNone: "No headings found by their look. One entry per chapter file was used instead.",
@@ -444,6 +458,7 @@ const UI = {
     authorHint: "Separa varios autores con &amp;. Ordenar como es cómo las bibliotecas acomodan el libro, por ejemplo <i>Cortázar, Julio</i>.",
     tocEmpty: "Este libro no tiene índice.",
     tocGen: "Buscar títulos en el texto", tocUndo: "Restaurar capítulos originales",
+    tocCase: "Corregir MAYÚSCULAS en nombres", hView: "Toca una línea para verla en su página en el lector.", pvFile: "archivo",
     hApply: "Usar como capítulos", hCancel: "Cancelar",
     hSum: (n, g) => `Encontré ${n} posibles títulos en ${g} ${g === 1 ? "estilo" : "estilos"}. Palomea los grupos que sí son títulos y elige su nivel; abre un grupo para revisar cada línea en su contexto y desmarca la que no lo sea.`,
     hNone: "No encontré títulos por su apariencia. Usé una entrada por archivo de capítulo.",
@@ -922,7 +937,7 @@ function groupLabel(g) {
 function renderHeadingPanel() {
   const gs = book.hgroups || [];
   const total = gs.reduce((n, g) => n + g.items.length, 0);
-  $("#hsum").textContent = t("hSum")(total, gs.length);
+  $("#hsum").textContent = t("hSum")(total, gs.length) + " " + t("hView");
   const open = new Set(Array.from(document.querySelectorAll("#hgroups details[open]")).map(d => d.closest(".hgroup").dataset.g));
   $("#hgroups").innerHTML = gs.map((g, gi) => `
     <div class="hgroup${g.on ? "" : " off"}" data-g="${gi}">
@@ -935,10 +950,84 @@ function renderHeadingPanel() {
         </select>
       </div>
       <details${open.has(String(gi)) ? " open" : ""}><summary>${t("hLines")(g.items.length)}</summary>
-        <ul class="hitems">${g.items.map((c, ci) => `<li><input type="checkbox" data-c="${gi}:${ci}" ${c.on ? "checked" : ""}><div><span class="ht">${esc(c.text)}</span><span class="hc">${c.next ? `${esc(t("hNext"))} ${esc(c.next)}…` : ""}</span><span class="hf">${esc(c.href)}</span></div></li>`).join("")}</ul>
+        <ul class="hitems">${g.items.map((c, ci) => `<li><input type="checkbox" data-c="${gi}:${ci}" ${c.on ? "checked" : ""}><div><button type="button" class="ht" data-pv="${gi}:${ci}" aria-pressed="false">${esc(c.text)}</button><span class="hc">${c.next ? `${esc(t("hNext"))} ${esc(c.next)}…` : ""}</span><span class="hf">${esc(c.href)}</span></div></li>`).join("")}</ul>
       </details>
     </div>`).join("");
 }
+// show a candidate on its page, in the reader on the right
+function inlineHTML(node) {
+  let out = "";
+  for (const c of node.childNodes) {
+    if (c.nodeType === 3) { out += esc(c.nodeValue); continue; }
+    if (c.nodeType !== 1) continue;
+    const n = c.localName;
+    if (n === "img" || n === "svg" || n === "image") { out += ` <span class="img">[img]</span> `; continue; }
+    if (n === "br") { out += "<br>"; continue; }
+    const inner = inlineHTML(c);
+    out += (n === "b" || n === "strong") ? `<b>${inner}</b>` : (n === "i" || n === "em") ? `<i>${inner}</i>` : inner;
+  }
+  return out;
+}
+function showOnPage(c, li) {
+  const d = c.doc, body = byLocal(d, "body")[0];
+  const els = Array.from(body.getElementsByTagName("*")).filter(e => (BLOCKS.has(e.localName) || e.localName === "img") && !Array.from(e.getElementsByTagName("*")).some(x => BLOCKS.has(x.localName) && x.localName !== "center"));
+  const k = els.indexOf(c.el);
+  const from = Math.max(0, k - 2), html = [];
+  for (let j = from; j < Math.min(els.length, k + 14); j++) {
+    const e = els[j];
+    if (e.localName === "img") { html.push(`<p class="img">[img]</p>`); continue; }
+    let inner = inlineHTML(e).replace(/\s+/g, " ").trim();
+    if (!inner) continue;
+    // only the end of what comes before, so the heading stays near the top of the page
+    if (j < k) { const tx = textOf(e); inner = tx.length > 150 ? "…" + esc(tx.slice(-150).replace(/^\S*\s/, "")) : inner; }
+    const L = j === k ? c.L : null;
+    const style = j === k ? "" : (/^h\d$/.test(e.localName) ? ' style="font-weight:bold"' : "");
+    html.push(j === k ? `<p${c.L.center ? ' style="text-align:center"' : ""}><span class="hl">${inner}</span></p>` : `<p${style}>${inner}</p>`);
+  }
+  const content = html.join("") + `<div class="pf">${esc(t("pvFile"))}: ${esc(c.href)}</div>`;
+  if (matchMedia("(max-width: 860px)").matches && li) {
+    // on a phone the reader sits above the list: show the page right under the line instead
+    const box = document.createElement("div"); box.className = "pagepv inline"; box.innerHTML = content;
+    li.appendChild(box);
+    return;
+  }
+  const pv = $("#pagepv");
+  pv.innerHTML = content;
+  pv.hidden = false;
+}
+function hidePage() { $("#pagepv").hidden = true; document.querySelectorAll(".pagepv.inline").forEach(x => x.remove()); book && (book.pvCur = null); document.querySelectorAll(".hitems li.cur").forEach(l => l.classList.remove("cur")); }
+
+// "I THE HARMONY OF THE SPHERES" -> "I. The Harmony of the Spheres" (English) / "Teoría de la onda…" (Spanish: sentence case)
+const SMALL_EN = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "into", "nor", "of", "on", "or", "over", "the", "to", "upon", "via", "with", "vs", "de", "del", "der", "van", "von", "du", "da", "la", "le"]);
+function fixCaps(label, lang) {
+  const letters = label.replace(/[^\p{L}]/gu, "");
+  if (letters.length < 3 || letters !== letters.toUpperCase()) return label;      // only labels written in CAPITALS
+  const es = /^(es|pt|it|fr|ca)/i.test(lang || "");
+  let s = label.trim();
+  // a bare Roman numeral before the title gets its point: "IV TYCHO" -> "IV. TYCHO"
+  s = s.replace(/^([IVXLC]{1,6})\s+(?=[^.\s])/, "$1. ");
+  // "PART ONE THE HEROIC AGE" -> "PART ONE: THE HEROIC AGE"
+  s = s.replace(/^(PART|PARTE|BOOK|LIBRO|LIVRE|TEIL)\s+([\p{L}\d]+)\s+(?=[\p{L}"“])/u, "$1 $2: ");
+  let first = true;
+  return s.split(/(\s+)/).map(tok => {
+    if (/^\s+$/.test(tok)) return tok;
+    const core = tok.replace(/^[^\p{L}\d]+|[^\p{L}\d]+$/gu, "");
+    const isRoman = (/^[IVXLC]{1,6}$/.test(core) && (first || /[.:]$/.test(tok) || core.length > 1)) || /^[IVXLC]{1,6}([.\-][\dIVXLC]+)+$/.test(core);
+    let out;
+    if (isRoman || /^\d/.test(core)) out = tok;
+    else {
+      const low = tok.toLocaleLowerCase(lang || undefined);
+      const lowCore = core.toLocaleLowerCase(lang || undefined);
+      const cap = (w) => w.replace(/\p{L}/u, ch => ch.toLocaleUpperCase(lang || undefined));
+      if (first) out = cap(low);
+      else if (es) out = low;
+      else out = SMALL_EN.has(lowCore) ? low : low.split("-").map(cap).join("-");
+    }
+    first = /[:.!?]$/.test(tok);          // a new phrase starts after "IV.", "1." or a colon
+    return out;
+  }).join("");
+}
+
 function applyHeadings() {
   const chosen = [];
   for (const g of book.hgroups) {
@@ -1002,6 +1091,7 @@ function materialiseHeadings(b) {
     }
     b.edits[path] = serialize(d);
   }
+  b.hgroups = null;               // the lines are headings now; a new search starts fresh
   return touched.size;
 }
 
@@ -1527,6 +1617,8 @@ function renderToc() {
   $("#tocempty").hidden = book.toc.length > 0;
   $("#tocsum").textContent = book.toc.length ? t("entries")(book.toc.length) : "";
   $("#tocundo").hidden = !(book.tocBuilt || book.tocDirty);
+  const lang = ($("#m-lang") && $("#m-lang").value) || book.meta.lang || "en";
+  $("#toccase").hidden = !book.toc.some(e => fixCaps(e.label, lang) !== e.label);
 }
 function renderCover() {
   const img = $("#coverimg");
@@ -1704,10 +1796,28 @@ $("#hgroups").addEventListener("change", (e) => {
 });
 $("#happly").addEventListener("click", () => {
   if (!book || !applyHeadings()) return;
-  $("#hpanel").hidden = true;
+  $("#hpanel").hidden = true; hidePage();
   renderToc(); refreshAll();
 });
-$("#hcancel").addEventListener("click", () => { $("#hpanel").hidden = true; });
+$("#hcancel").addEventListener("click", () => { $("#hpanel").hidden = true; hidePage(); });
+$("#hgroups").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-pv]"); if (!b) return;
+  const [gi, ci] = b.dataset.pv.split(":").map(Number);
+  const li = b.closest("li"), on = li.classList.contains("cur");
+  document.querySelectorAll(".hitems li.cur").forEach(l => { l.classList.remove("cur"); l.querySelector("button.ht").setAttribute("aria-pressed", "false"); });
+  hidePage();
+  if (on) return;
+  li.classList.add("cur"); b.setAttribute("aria-pressed", "true");
+  book.pvCur = b.dataset.pv;
+  showOnPage(book.hgroups[gi].items[ci], li);
+});
+$("#toccase").addEventListener("click", () => {
+  if (!book) return;
+  const lang = $("#m-lang").value || book.meta.lang || "en";
+  let n = 0;
+  book.toc = currentToc().map(e => { const l = fixCaps(e.label, lang); if (l !== e.label) n++; return { ...e, label: l }; });
+  if (n) { book.tocDirty = true; renderToc(); refreshAll(); }
+});
 $("#slim").addEventListener("change", () => { if (book) { book.slim = $("#slim").checked; refreshAll(); } });
 $("#tocundo").addEventListener("click", () => {
   if (!book) return;
